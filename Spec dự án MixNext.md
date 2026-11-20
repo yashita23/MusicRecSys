@@ -207,7 +207,8 @@ Huấn luyện chạy trên Kaggle (CPU là đủ cho ALS và item2vec); app Str
 - **Mô hình:** implicit (ALS), gensim (item2vec), PyTorch (SASRec độc lập và mix học), numpy, scipy
 - **Demo:** Streamlit, Plotly
 - **Dự phòng:** librosa để tự trích BPM và tông
-- **Quản lý:** GitHub (`yashita23/MusicRecSys`), mỗi người một nhánh, merge qua pull request; ticket là GitHub Issues gắn milestone M1/M2/M3 và label `owner:A/B/C`
+- **Quản lý:** GitHub (`yashita23/MusicRecSys`); ticket là GitHub Issues gắn milestone M1/M2/M3, label `owner:A/B/C` và quan hệ "blocked by" giữa các issue
+- **Nhánh:** chỉ 3 nhánh cố định `a`, `b`, `c` (A → `a`, B → `b`, C → `c`), không tạo nhánh theo ticket. Xong một ticket thì mở PR từ nhánh của mình vào `main`, mô tả ghi `Closes #N`. Sau mỗi lần merge, hai người còn lại merge `main` về nhánh mình, nhờ vậy ticket đang bị chặn của họ được mở và họ có code mới nhất
 - **Bàn giao dữ liệu:** mỗi bước pipeline xuất ra một Kaggle Dataset riêng tư có phiên bản; định dạng file chốt ở `docs/data-contract.md`
 
 ```text
