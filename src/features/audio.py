@@ -4,25 +4,34 @@ from __future__ import annotations
 import pandas as pd
 
 from src.data.coverage import usable_mask
-from src.data.schema import TRACKS_COLUMNS, count_train_occurrences
+from src.data.schema import TRACKS_COLUMNS, SchemaError, count_train_occurrences, validate_tracks
 from src.features.camelot import camelot_code
+
+_SHOW_AT_MOST = 5
+
+
+def _some(ids: list[str]) -> str:
+    shown = ", ".join(sorted(ids)[:_SHOW_AT_MOST])
+    return shown + (", …" if len(ids) > _SHOW_AT_MOST else "")
 
 
 def make_tracks(tracks_raw: pd.DataFrame, sessions: pd.DataFrame) -> pd.DataFrame:
-    """tracks_raw (#5) + sessions đã chia (#7) → bảng tracks đúng data-contract.
+    """tracks_raw (#5) + sessions đã chia (#7) → bảng tracks đúng data-contract (đã qua validate_tracks).
 
-    bpm = tempo (tempo của Spotify vốn là BPM), camelot từ (key, mode),
+    bpm = tempo (tempo của Spotify vốn là BPM); energy giữ nguyên (vốn trong 0–1); camelot từ (key, mode);
     n_occurrences = số lượt trong các phiên train. Bài không dùng được là lỗi của #5, nên báo lỗi chứ không bỏ.
     """
-    bad = ~usable_mask(tracks_raw)
-    if bad.any():
-        raise ValueError(f"tracks_raw có {int(bad.sum())} bài không dùng được (tempo ≤ 0, key ngoài 0–11, …); #5 lẽ ra đã loại")
-    missing = set(sessions["track_id"]) - set(tracks_raw["track_id"])
+    unusable = tracks_raw.loc[~usable_mask(tracks_raw), "track_id"].tolist()
+    if unusable:
+        raise SchemaError("tracks_raw", [f"{len(unusable)} bài không dùng được (tempo ≤ 0, key ngoài 0–11, …; #5 lẽ ra đã loại): {_some(unusable)}"])
+    missing = sorted(set(sessions["track_id"]) - set(tracks_raw["track_id"]))
     if missing:
-        raise ValueError(f"{len(missing)} bài trong sessions không có trong tracks_raw")
+        raise SchemaError("tracks_raw", [f"{len(missing)} bài trong sessions không có trong tracks_raw: {_some(missing)}"])
 
-    tracks = tracks_raw.copy()
+    tracks = tracks_raw.astype({"key": "int64", "mode": "int64"})
     tracks["bpm"] = tracks["tempo"].astype(float)
-    tracks["camelot"] = [camelot_code(int(k), int(m)) for k, m in zip(tracks["key"], tracks["mode"])]
+    tracks["camelot"] = [camelot_code(k, m) for k, m in zip(tracks["key"], tracks["mode"])]
     tracks["n_occurrences"] = tracks["track_id"].map(count_train_occurrences(sessions)).fillna(0).astype("int64")
-    return tracks[list(TRACKS_COLUMNS)].reset_index(drop=True)
+    tracks = tracks[list(TRACKS_COLUMNS)].reset_index(drop=True)
+    validate_tracks(tracks)
+    return tracks

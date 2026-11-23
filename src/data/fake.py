@@ -24,7 +24,7 @@ from src.data.schema import (
     count_train_occurrences,
     session_track_lists,
 )
-from src.features.camelot import camelot_code
+from src.features.audio import make_tracks
 
 FAKE_MODEL = "fake"
 EMBEDDING_DIM = 16
@@ -95,20 +95,18 @@ def make_fake_dataset(n_sessions: int = 200, n_tracks: int = 500, random_seed: i
     mode = rng.integers(0, 2, n_tracks)
     tempo = rng.uniform(70, 180, n_tracks).round(3)
     train_counts = count_train_occurrences(sessions)
-    tracks = pd.DataFrame(
+    tracks_raw = pd.DataFrame(
         {
             "track_id": ids,
             "track_name": [f"Fake song {i}" for i in range(n_tracks)],
             "artist_name": [f"Fake artist {i % 50}" for i in range(n_tracks)],
             "tempo": tempo,
-            "bpm": tempo,
             "key": key,
             "mode": mode,
-            "camelot": [camelot_code(int(k), int(m)) for k, m in zip(key, mode)],
             "energy": rng.uniform(0, 1, n_tracks).round(3),
         }
     )
-    tracks["n_occurrences"] = tracks["track_id"].map(train_counts).fillna(0).astype("int64")
+    tracks = make_tracks(tracks_raw, sessions)  # cùng một đường với dữ liệu thật
 
     track_lists = session_track_lists(sessions)
     eval_sids = [s for s in sorted(split_of) if track_lists[s][SEED_LENGTH] not in track_lists[s][:SEED_LENGTH]]

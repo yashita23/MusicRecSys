@@ -37,18 +37,33 @@ def sessions():
 
 
 def test_make_tracks_produces_contract_table():
-    t = make_tracks(tracks_raw(), sessions()).set_index("track_id")
-    validate_tracks(t.reset_index())
-    assert t.loc[A, "camelot"] == "8A"   # A thứ
-    assert t.loc[B, "camelot"] == "8B"   # C trưởng
-    assert t.loc[C, "camelot"] == "2B"   # F# trưởng
-    assert t.loc[B, "bpm"] == 126.5
-    assert list(t.loc[[A, B, C], "n_occurrences"]) == [2, 1, 0]
+    tracks = make_tracks(tracks_raw(), sessions())
+    validate_tracks(tracks)
+    by_id = tracks.set_index("track_id")
+    assert by_id.loc[A, "camelot"] == "8A"   # A thứ
+    assert by_id.loc[B, "camelot"] == "8B"   # C trưởng
+    assert by_id.loc[C, "camelot"] == "2B"   # F# trưởng
+    assert by_id.loc[B, "bpm"] == 126.5
+    assert list(by_id.loc[[A, B, C], "n_occurrences"]) == [2, 1, 0]
 
 
-def test_unusable_track_is_an_error_not_silently_dropped():
-    with pytest.raises(ValueError, match="1 bài"):
-        make_tracks(tracks_raw(tempo=[124.0, 0.0, 90.0]), sessions())
+def test_float_key_and_mode_from_sqlite_become_int():
+    validate_tracks(make_tracks(tracks_raw(key=[9.0, 0.0, 6.0], mode=[0.0, 1.0, 1.0]), sessions()))
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [{"tempo": [124.0, 0.0, 90.0]}, {"key": [9, -1, 6]}, {"key": [9.0, float("nan"), 6.0]}],
+    ids=["tempo-0", "key-minus-1", "key-missing"],
+)
+def test_unusable_track_is_an_error_naming_the_track(overrides):
+    with pytest.raises(ValueError, match=f"1 bài.*{B}"):
+        make_tracks(tracks_raw(**overrides), sessions())
+
+
+def test_duplicate_track_id_in_raw_features_is_an_error():
+    with pytest.raises(ValueError, match="track_id"):
+        make_tracks(pd.concat([tracks_raw(), tracks_raw().iloc[:1]], ignore_index=True), sessions())
 
 
 def test_session_track_missing_from_raw_features_is_an_error():
