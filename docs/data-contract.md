@@ -6,8 +6,10 @@ Muốn đổi schema thì mở PR sửa cả ba nơi (tài liệu này, `schema.
 
 ## Bố cục thư mục
 
+**Dữ liệu thật trên Kaggle:** [`titeohihi/mixnext-splited`](https://www.kaggle.com/datasets/titeohihi/mixnext-splited) (output của notebook 03, #7). Bộ này có đủ ba bảng chính, `split_report.json` và các file trung gian của #5. Muốn dùng trong notebook thì Add Input → Datasets → `mixnext-splited`. Bộ `mixnext-processed` chỉ chứa output của #5, và Kaggle không cho thêm version mới, nên các ticket sau không dùng nó.
+
 ```text
-<root>/                                  # Kaggle Dataset mixnext-processed, hoặc data/processed/ ở máy
+<root>/                                  # Kaggle Dataset titeohihi/mixnext-splited, hoặc data/processed/ ở máy
 ├── tracks.parquet
 ├── sessions.parquet
 ├── eval_targets.parquet
