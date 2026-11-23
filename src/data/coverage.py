@@ -42,19 +42,32 @@ def sample_slices(paths: list[Path], n_slices: int | None, random_seed: int = 42
     return sorted(random.Random(random_seed).sample(paths, n_slices))
 
 
-def load_mpd_occurrences(slice_paths: list[Path]) -> pd.DataFrame:
-    """Một dòng cho mỗi lượt xuất hiện: pid, pos, track_id."""
+def load_mpd(slice_paths: list[Path]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """(lượt xuất hiện: pid, pos, track_id; tên: track_id, track_name, artist_name — tên lần đầu gặp)."""
     pids, poss, tids = [], [], []
+    names: dict[str, tuple[str, str]] = {}
     for p in slice_paths:
         with open(p, encoding="utf-8") as f:
             data = json.load(f)
         for pl in data["playlists"]:
             pid = pl["pid"]
             for t in pl["tracks"]:
+                tid = normalize_track_id(t["track_uri"])
                 pids.append(pid)
                 poss.append(t["pos"])
-                tids.append(normalize_track_id(t["track_uri"]))
-    return pd.DataFrame({"pid": pids, "pos": poss, "track_id": tids})
+                tids.append(tid)
+                if tid is not None and tid not in names:
+                    names[tid] = (t.get("track_name", ""), t.get("artist_name", ""))
+    occ = pd.DataFrame({"pid": pids, "pos": poss, "track_id": tids})
+    name_df = pd.DataFrame(
+        [(tid, n, a) for tid, (n, a) in names.items()], columns=["track_id", "track_name", "artist_name"]
+    )
+    return occ, name_df
+
+
+def load_mpd_occurrences(slice_paths: list[Path]) -> pd.DataFrame:
+    """Một dòng cho mỗi lượt xuất hiện: pid, pos, track_id."""
+    return load_mpd(slice_paths)[0]
 
 
 def _find_table(con: sqlite3.Connection, table: str | None) -> str:
@@ -98,8 +111,14 @@ def load_features(path: str | Path, table: str | None = None) -> pd.DataFrame:
 
 
 def usable_mask(feats: pd.DataFrame) -> pd.Series:
-    """Bài dùng được cho điểm mix: đủ 4 đặc trưng, tempo > 0, key được xác định (≠ -1)."""
-    return feats[FEATURE_COLS].notna().all(axis=1) & (feats["tempo"] > 0) & (feats["key"] >= 0)
+    """Bài dùng được cho điểm mix: đủ 4 đặc trưng, tempo > 0, key được xác định (≠ -1), mode ∈ {0, 1}, energy ∈ [0, 1]."""
+    return (
+        feats[FEATURE_COLS].notna().all(axis=1)
+        & (feats["tempo"] > 0)
+        & feats["key"].between(0, 11)
+        & feats["mode"].isin([0, 1])
+        & feats["energy"].between(0, 1)
+    )
 
 
 def coverage_report(occ: pd.DataFrame, feats: pd.DataFrame, min_tracks: int = 10, min_occurrences: int = 5) -> dict:

@@ -4,6 +4,6 @@ Bản MPD chính thức trên AIcrowd đã bị gỡ (tính đến 11/2026), cò
 
 ## Consequences
 
-- Độ phủ đo ngày 21/11/2026 (#1) trên 100 slice ngẫu nhiên (100.000 playlist, 6.624.113 lượt, 686.633 bài; `random_seed` = 42): 99,98% bài và 100,00% lượt có trong bộ features. Tính riêng bài dùng được (tempo > 0, key ≠ −1, không thiếu giá trị) là 99,89% bài và 99,97% lượt. 96,49% playlist còn ≥ 10 bài dùng được. Chỉ 0,09% bài ghép được có tempo ≤ 0. Bộ dự phòng không cần dùng.
+- Độ phủ đo ngày 21/11/2026 (#1) trên 100 slice ngẫu nhiên (100.000 playlist, 6.624.113 lượt, 686.633 bài; `random_seed` = 42): 99,98% bài và 100,00% lượt có trong bộ features. Tính riêng bài dùng được (tempo > 0, key ≠ −1, không thiếu giá trị) là 99,89% bài và 99,97% lượt. 96,49% playlist còn ≥ 10 bài dùng được. Chỉ 0,09% bài ghép được có tempo ≤ 0. Bộ dự phòng không cần dùng. Sau #5, định nghĩa "dùng được" chặt thêm (`mode` ∈ {0, 1}, `energy` ∈ [0, 1]) cho khớp data-contract; #1 đã đo được 0% bài có energy ngoài miền, nên các con số trên gần như không đổi.
 - Trên Kaggle, dataset được mount ở `/kaggle/input/datasets/<owner>/<slug>/`, nên code tìm file bằng glob thay vì ghi cứng đường dẫn.
 - Nếu muốn đổi nguồn dữ liệu sau tuần 1 thì phải chạy lại toàn bộ pipeline và mọi kết quả.
