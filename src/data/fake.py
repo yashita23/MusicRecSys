@@ -22,9 +22,9 @@ from src.data.schema import (
     N_CANDIDATES,
     SEED_LENGTH,
     count_train_occurrences,
-    session_track_lists,
 )
-from src.features.camelot import camelot_code
+from src.data.split import SplitReport, assign_splits, make_eval_targets, split_report, write_processed
+from src.features.audio import make_tracks
 
 FAKE_MODEL = "fake"
 EMBEDDING_DIM = 16
@@ -43,6 +43,7 @@ class FakeData:
     eval_targets: pd.DataFrame
     candidates: dict[str, pd.DataFrame]  # split → candidates của mô hình "fake", lần chạy 0
     embeddings: dict[str, tuple[np.ndarray, pd.DataFrame]]  # "fake" → (vectors, index)
+    report: SplitReport
 
 
 def _track_ids(rng: np.random.Generator, n: int) -> list[str]:
@@ -79,14 +80,11 @@ def make_fake_dataset(n_sessions: int = 200, n_tracks: int = 500, random_seed: i
     popularity[rare] = 0
     popularity /= popularity.sum()
 
-    order = rng.permutation(n_sessions)
-    n_eval = max(1, round(0.1 * n_sessions))
-    split_of = {int(s): "val" for s in order[:n_eval]}
-    split_of.update({int(s): "test" for s in order[n_eval : 2 * n_eval]})
+    split_of = assign_splits(range(n_sessions), random_seed)  # cùng luật chia với dữ liệu thật
 
     rows = []
     for sid in range(n_sessions):
-        split = split_of.get(sid, "train")
+        split = split_of[sid]
         chosen = _session(rng, n_tracks, popularity, rare, is_eval=split != "train")
         rows += [{"session_id": sid, "split": split, "pos": p, "track_id": ids[t]} for p, t in enumerate(chosen)]
     sessions = pd.DataFrame(rows)
@@ -95,31 +93,20 @@ def make_fake_dataset(n_sessions: int = 200, n_tracks: int = 500, random_seed: i
     mode = rng.integers(0, 2, n_tracks)
     tempo = rng.uniform(70, 180, n_tracks).round(3)
     train_counts = count_train_occurrences(sessions)
-    tracks = pd.DataFrame(
+    tracks_raw = pd.DataFrame(
         {
             "track_id": ids,
             "track_name": [f"Fake song {i}" for i in range(n_tracks)],
             "artist_name": [f"Fake artist {i % 50}" for i in range(n_tracks)],
             "tempo": tempo,
-            "bpm": tempo,
             "key": key,
             "mode": mode,
-            "camelot": [camelot_code(int(k), int(m)) for k, m in zip(key, mode)],
             "energy": rng.uniform(0, 1, n_tracks).round(3),
         }
     )
-    tracks["n_occurrences"] = tracks["track_id"].map(train_counts).fillna(0).astype("int64")
+    tracks = make_tracks(tracks_raw, sessions)  # cùng một đường với dữ liệu thật
 
-    track_lists = session_track_lists(sessions)
-    eval_sids = [s for s in sorted(split_of) if track_lists[s][SEED_LENGTH] not in track_lists[s][:SEED_LENGTH]]
-    eval_targets = pd.DataFrame(
-        {
-            "session_id": eval_sids,
-            "split": [split_of[s] for s in eval_sids],
-            "seed_track_ids": [track_lists[s][:SEED_LENGTH] for s in eval_sids],
-            "target_track_id": [track_lists[s][SEED_LENGTH] for s in eval_sids],
-        }
-    )
+    eval_targets = make_eval_targets(sessions)
 
     index_of = {t: i for i, t in enumerate(ids)}
     candidates: dict[str, pd.DataFrame] = {}
@@ -138,7 +125,8 @@ def make_fake_dataset(n_sessions: int = 200, n_tracks: int = 500, random_seed: i
     learned = sorted(train_counts.index)
     vectors = rng.normal(size=(len(learned), EMBEDDING_DIM)).astype(np.float32)
     index = pd.DataFrame({"row": np.arange(len(learned)), "track_id": learned})
-    return FakeData(tracks, sessions, eval_targets, candidates, {FAKE_MODEL: (vectors, index)})
+    report = split_report(tracks, sessions, eval_targets, random_seed)
+    return FakeData(tracks, sessions, eval_targets, candidates, {FAKE_MODEL: (vectors, index)}, report)
 
 
 def write_fake(data: FakeData, out_dir: str | Path) -> list[Path]:
@@ -146,11 +134,7 @@ def write_fake(data: FakeData, out_dir: str | Path) -> list[Path]:
     out = Path(out_dir)
     (out / "candidates").mkdir(parents=True, exist_ok=True)
     (out / "item_embeddings").mkdir(parents=True, exist_ok=True)
-    written = []
-    for name, df in [("tracks", data.tracks), ("sessions", data.sessions), ("eval_targets", data.eval_targets)]:
-        path = out / f"{name}.parquet"
-        df.to_parquet(path, index=False)
-        written.append(path)
+    written = write_processed(out, data.tracks, data.sessions, data.eval_targets, data.report)
     for split, df in data.candidates.items():
         path = out / "candidates" / f"{FAKE_MODEL}_{split}_run0.parquet"
         df.to_parquet(path, index=False)

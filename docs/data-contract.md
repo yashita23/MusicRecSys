@@ -6,11 +6,15 @@ Muốn đổi schema thì mở PR sửa cả ba nơi (tài liệu này, `schema.
 
 ## Bố cục thư mục
 
+**Dữ liệu thật trên Kaggle:** [`titeohihi/mixnext-splited`](https://www.kaggle.com/datasets/titeohihi/mixnext-splited) (output của notebook 03, #7). Bộ này có đủ ba bảng chính, `split_report.json` và các file trung gian của #5. Muốn dùng trong notebook thì Add Input → Datasets → `mixnext-splited`. Bộ `mixnext-processed` chỉ chứa output của #5, và Kaggle không cho thêm version mới, nên các ticket sau không dùng nó.
+
 ```text
-<root>/                                  # Kaggle Dataset mixnext-processed, hoặc data/processed/ ở máy
+<root>/                                  # Kaggle Dataset titeohihi/mixnext-splited, hoặc data/processed/ ở máy
 ├── tracks.parquet
 ├── sessions.parquet
-└── eval_targets.parquet
+├── eval_targets.parquet
+├── split_report.json                    # báo cáo chia tập, xem mục split_report.json
+└── sessions_raw.parquet, tracks_raw.parquet, build_log.json   # file trung gian của A, giữ lại từ v1
 
 <root>/                                  # Kaggle Dataset mixnext-candidates
 └── candidates/{model}_{split}_run{r}.parquet
@@ -21,6 +25,7 @@ Muốn đổi schema thì mở PR sửa cả ba nơi (tài liệu này, `schema.
     └── {model}_tracks.parquet
 ```
 
+- `tracks`, `sessions`, `eval_targets` được tạo bằng `python -m src.data.split --raw-dir <thư mục #5> --out <thư mục ra>` (#6, #7). Mỗi phiên được gán vào một split theo hoán vị ngẫu nhiên của `session_id` với `random_seed` = 42, tỉ lệ 80/10/10.
 - `model` ∈ `popularity`, `itemknn`, `als`, `item2vec`, `sasrec` (dữ liệu giả dùng `fake`).
 - `split` ∈ `val`, `test`.
 - `r` là số thứ tự lần chạy: 0, 1, 2.
@@ -39,10 +44,10 @@ Danh mục bài. Mỗi bài một dòng.
 | `key` | int | 0–11 (0 = C, 1 = C♯/D♭, …) |
 | `mode` | int | 0 = thứ, 1 = trưởng |
 | `camelot` | string | `1A`–`12B`, phải bằng `camelot_code(key, mode)` trong `src/features/camelot.py` (C trưởng = 8B, A thứ = 8A) |
-| `energy` | float | 0–1 |
+| `energy` | float | 0–1; giữ nguyên giá trị thô (energy của Spotify vốn đã trong 0–1) |
 | `n_occurrences` | int | Số lượt xuất hiện **trong các phiên train**, ≥ 0 |
 
-Không cột nào được null. Ở bước lọc (#5), những bài sau bị loại như thể không ghép được: thiếu features, tempo ≤ 0, không xác định được tông (`key` ngoài 0–11, gồm cả −1), `mode` ∉ {0, 1}, hoặc `energy` ngoài 0–1. Đây là `usable_mask` trong `src/data/coverage.py`. Các bài này chiếm khoảng 0,11% số bài và 0,03% số lượt (ADR 0001).
+Không cột nào được null. Ở bước lọc (#5), những bài sau bị loại như thể không ghép được: thiếu features, tempo ≤ 0, không xác định được tông (`key` ngoài 0–11, gồm cả −1), `mode` ∉ {0, 1}, hoặc `energy` ngoài 0–1. Đây là `usable_mask` trong `src/data/coverage.py`. Các bài này chiếm khoảng 0,11% số bài và 0,03% số lượt (ADR 0001). Đến bước tạo `tracks.parquet` (`make_tracks` trong `src/features/audio.py`, #6), nếu còn bài nào như vậy thì đó là lỗi của #5: hàm **báo lỗi** (nêu tên vài bài) chứ không tự bỏ, vì tự bỏ sẽ làm phiên trỏ tới bài không còn trong `tracks`. Hàm cũng báo lỗi khi bài trong `sessions` không có trong `tracks_raw`, và kiểm tra kết quả bằng `validate_tracks` trước khi trả về. `fake.py` dựng bảng `tracks` qua cùng hàm này.
 
 ## sessions.parquet
 
@@ -72,6 +77,19 @@ Seed và bài đích của các phiên val/test (ADR 0003). Mỗi phiên một d
 
 - Mọi phiên val/test đều phải có mặt, trừ phiên có bài đích trùng một bài trong seed. Những phiên đó bị **bỏ**, vì bài trong seed bị loại khỏi ứng viên nên không mô hình nào đoán được.
 - Phiên có bài đích không có trong train thì được **giữ** và tính là trượt cho mọi mô hình. #7 báo cáo tỉ lệ của những phiên này.
+
+## split_report.json
+
+Báo cáo đi kèm ba bảng trên, do `src/data/split.py` (`SplitReport`) ghi ra. `python -m src.data.fake` cũng ghi file này. Đây là báo cáo chứ không phải dữ liệu, nên `schema.py` không có validator cho nó.
+
+| khóa | ý nghĩa |
+| --- | --- |
+| `random_seed` | `random_seed` dùng để chia tập |
+| `n_sessions` | `{train, val, test}` → số phiên |
+| `n_eval_targets` | `{val, test}` → số phiên trong `eval_targets` |
+| `n_dropped_target_in_seed` | `{val, test}` → số phiên bị bỏ vì bài đích nằm trong seed |
+| `share_target_unseen_in_train` | `{val, test}` → tỉ lệ bài đích không có trong train (luôn tính là trượt) |
+| `fingerprint` | sha256 của `tracks`, `sessions`, `eval_targets` theo đúng thứ tự dòng. Chạy lại ra cùng giá trị nghĩa là ra cùng dữ liệu |
 
 ## candidates/{model}_{split}_run{r}.parquet
 
