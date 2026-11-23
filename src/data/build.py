@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import pandas as pd
@@ -18,15 +18,30 @@ RAW_TRACK_COLUMNS = ["track_id", "track_name", "artist_name", "tempo", "key", "m
 
 
 @dataclass(frozen=True)
+class BuildConfig:
+    n_slices: int | None = N_SLICES          # None = mọi slice
+    random_seed: int = RANDOM_SEED
+    min_track_occurrences: int = MIN_TRACK_OCCURRENCES
+    min_session_length: int = MIN_SESSION_LENGTH
+
+
+@dataclass(frozen=True)
 class FilterStep:
+    """Số phiên, số bài và số lượt xuất hiện còn lại sau một bước."""
+
     name: str
     n_sessions: int
     n_tracks: int
     n_occurrences: int
 
 
-def _step(name: str, occ: pd.DataFrame) -> FilterStep:
+def _count_after(name: str, occ: pd.DataFrame) -> FilterStep:
     return FilterStep(name, int(occ["session_id"].nunique()), int(occ["track_id"].nunique()), len(occ))
+
+
+def _keep_frequent(occ: pd.DataFrame, column: str, minimum: int) -> pd.DataFrame:
+    """Giữ các dòng mà giá trị ở `column` xuất hiện ≥ minimum lần."""
+    return occ[occ[column].map(occ[column].value_counts()) >= minimum]
 
 
 def filter_sessions(
@@ -35,17 +50,15 @@ def filter_sessions(
     min_session_length: int = MIN_SESSION_LENGTH,
 ) -> tuple[pd.DataFrame, list[FilterStep]]:
     """Bỏ bài có ít hơn min_track_occurrences lượt, bỏ phiên ít hơn min_session_length bài, lặp đến khi ổn định."""
-    log = [_step("đầu vào", occ)]
+    log = [_count_after("đầu vào", occ)]
     round_no = 0
     while True:
         round_no += 1
         n_before = len(occ)
-        counts = occ["track_id"].map(occ["track_id"].value_counts())
-        occ = occ[counts >= min_track_occurrences]
-        log.append(_step(f"vòng {round_no}: bỏ bài < {min_track_occurrences} lượt", occ))
-        lengths = occ["session_id"].map(occ["session_id"].value_counts())
-        occ = occ[lengths >= min_session_length]
-        log.append(_step(f"vòng {round_no}: bỏ phiên < {min_session_length} bài", occ))
+        occ = _keep_frequent(occ, "track_id", min_track_occurrences)
+        log.append(_count_after(f"vòng {round_no}: bỏ bài < {min_track_occurrences} lượt", occ))
+        occ = _keep_frequent(occ, "session_id", min_session_length)
+        log.append(_count_after(f"vòng {round_no}: bỏ phiên < {min_session_length} bài", occ))
         if len(occ) == n_before:
             break
     occ = occ.sort_values(["session_id", "pos"]).reset_index(drop=True)
@@ -58,28 +71,25 @@ class BuildResult:
     sessions: pd.DataFrame  # sessions_raw: session_id, pos, track_id (chưa chia)
     tracks: pd.DataFrame    # tracks_raw: RAW_TRACK_COLUMNS, đúng các bài còn trong sessions
     log: list[FilterStep]
+    config: BuildConfig = field(default_factory=BuildConfig)
+    features_path: str = ""
 
 
-def build(
-    mpd_dir: str | Path,
-    features_path: str | Path,
-    n_slices: int | None = N_SLICES,
-    random_seed: int = RANDOM_SEED,
-    min_track_occurrences: int = MIN_TRACK_OCCURRENCES,
-    min_session_length: int = MIN_SESSION_LENGTH,
-) -> BuildResult:
+def build(mpd_dir: str | Path, features_path: str | Path, config: BuildConfig = BuildConfig()) -> BuildResult:
     """Lấy mẫu slice MPD → ghép features → bỏ bài không dùng được → lọc lặp đến khi ổn định."""
-    slices = sample_slices(list_slices(mpd_dir), n_slices, random_seed)
+    slices = sample_slices(list_slices(mpd_dir), config.n_slices, config.random_seed)
     occ, names = load_mpd(slices)
     occ = occ.rename(columns={"pid": "session_id"})
-    log = [_step(f"lấy mẫu {len(slices)} slice", occ.dropna(subset=["track_id"]))]
+    if occ.duplicated(["session_id", "pos"]).any():
+        raise ValueError("session_id (pid) bị trùng giữa các slice")
+    log = [_count_after(f"lấy mẫu {len(slices)} slice", occ)]
 
     feats = load_features(features_path)
     feats = feats[usable_mask(feats)]
-    occ = occ[occ["track_id"].isin(set(feats["track_id"]))]
-    log.append(_step("bỏ bài không có features dùng được", occ))
+    occ = occ[occ["track_id"].isin(set(feats["track_id"]))]  # bỏ cả file local (track_id = None)
+    log.append(_count_after("bỏ bài không có features dùng được", occ))
 
-    sessions, filter_log = filter_sessions(occ, min_track_occurrences, min_session_length)
+    sessions, filter_log = filter_sessions(occ, config.min_track_occurrences, config.min_session_length)
     log += filter_log[1:]  # bước "đầu vào" trùng với bước ngay trên
 
     kept = sessions["track_id"].unique()
@@ -91,24 +101,32 @@ def build(
         .reset_index(drop=True)[RAW_TRACK_COLUMNS]
         .astype({"key": "int64", "mode": "int64"})  # SQLite có thể trả float nếu cột từng có NULL
     )
-    return BuildResult(sessions, tracks, log)
+    return BuildResult(sessions, tracks, log, config, str(features_path))
 
 
-def write_build(result: BuildResult, out_dir: str | Path, config: dict | None = None) -> list[Path]:
+def write_build(result: BuildResult, out_dir: str | Path) -> list[Path]:
     """Ghi sessions_raw.parquet, tracks_raw.parquet và build_log.json (file trung gian của A)."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    paths = [out / "sessions_raw.parquet", out / "tracks_raw.parquet", out / "build_log.json"]
-    result.sessions.to_parquet(paths[0], index=False)
-    result.tracks.to_parquet(paths[1], index=False)
-    log = {"config": config or {}, "steps": [asdict(s) for s in result.log]}
-    paths[2].write_text(json.dumps(log, indent=2, ensure_ascii=False), encoding="utf-8")
-    return paths
+    sessions_path, tracks_path, log_path = out / "sessions_raw.parquet", out / "tracks_raw.parquet", out / "build_log.json"
+    result.sessions.to_parquet(sessions_path, index=False)
+    result.tracks.to_parquet(tracks_path, index=False)
+    log = {
+        "config": {**asdict(result.config), "features": result.features_path},
+        "steps": [asdict(s) for s in result.log],
+    }
+    log_path.write_text(json.dumps(log, indent=2, ensure_ascii=False), encoding="utf-8")
+    return [sessions_path, tracks_path, log_path]
 
 
 def format_log(log: list[FilterStep]) -> str:
-    rows = [f"{'bước':<40} {'phiên':>10} {'bài':>10} {'lượt':>12}"]
-    rows += [f"{s.name:<40} {s.n_sessions:>10,} {s.n_tracks:>10,} {s.n_occurrences:>12,}" for s in log]
+    """Bảng log; cột cuối là tỉ lệ lượt xuất hiện còn lại so với bước đầu (lấy mẫu)."""
+    base = log[0].n_occurrences or 1
+    rows = [f"{'bước':<40} {'phiên':>10} {'bài':>10} {'lượt':>12} {'% lượt':>8}"]
+    rows += [
+        f"{s.name:<40} {s.n_sessions:>10,} {s.n_tracks:>10,} {s.n_occurrences:>12,} {s.n_occurrences / base:>8.1%}"
+        for s in log
+    ]
     return "\n".join(rows)
 
 
@@ -122,8 +140,9 @@ def main(argv: list[str] | None = None) -> BuildResult:
     ap.add_argument("--min-track-occurrences", type=int, default=MIN_TRACK_OCCURRENCES)
     ap.add_argument("--min-session-length", type=int, default=MIN_SESSION_LENGTH)
     args = ap.parse_args(argv)
-    result = build(args.mpd_dir, args.features, args.n_slices, args.random_seed, args.min_track_occurrences, args.min_session_length)
-    write_build(result, args.out, config={k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()})
+    config = BuildConfig(args.n_slices, args.random_seed, args.min_track_occurrences, args.min_session_length)
+    result = build(args.mpd_dir, args.features, config)
+    write_build(result, args.out)
     print(format_log(result.log))
     return result
 

@@ -4,16 +4,18 @@ import sqlite3
 import pandas as pd
 import pytest
 
-from src.data.build import build, filter_sessions, main
+from src.data.build import BuildConfig, build, filter_sessions, format_log, main
 
 ID = {c: c * 22 for c in "abcdmt"}  # Spotify ID giả 22 ký tự
+LOCAL_URI = "spotify:local:Artist:Album:Title:200"  # file local trong MPD, không có Spotify ID
+SMALL = BuildConfig(n_slices=None, min_track_occurrences=2, min_session_length=3)
 
 
 @pytest.fixture
 def toy_mpd(tmp_path):
-    """3 slice, 6 playlist. t có tempo = 0, m không có dòng features → cả hai phải bị loại."""
+    """3 slice, 6 playlist, 22 lượt. t có tempo = 0, m không có dòng features, L là file local → cả ba bị loại."""
     slices = {
-        "mpd.slice.0-999.json": {0: "abcd", 1: "abc"},
+        "mpd.slice.0-999.json": {0: "abcd", 1: "abcL"},
         "mpd.slice.1000-1999.json": {2: "abct", 3: "abm"},
         "mpd.slice.2000-2999.json": {4: "abc", 5: "dabc"},
     }
@@ -25,7 +27,7 @@ def toy_mpd(tmp_path):
                 {
                     "pid": pid,
                     "tracks": [
-                        {"pos": p, "track_uri": f"spotify:track:{ID[c]}", "track_name": f"Song {c}", "artist_name": f"Artist {c}"}
+                        {"pos": p, "track_uri": LOCAL_URI if c == "L" else f"spotify:track:{ID[c]}", "track_name": f"Song {c}", "artist_name": f"Artist {c}"}
                         for p, c in enumerate(tracks)
                     ],
                 }
@@ -56,8 +58,8 @@ def as_strings(df: pd.DataFrame) -> dict[int, str]:
 
 
 def test_filter_repeats_until_stable():
-    # Lượt 1: bỏ d, e, x, y (1 lượt) → phiên 3 = "a", phiên 5 = "f" quá ngắn → bỏ.
-    # Lượt 2: f chỉ còn 1 lượt → bỏ → phiên 4 = "ab" quá ngắn → bỏ. Lọc một lượt sẽ giữ sai phiên 4.
+    # Vòng 1: bỏ d, e, x, y (1 lượt) → phiên 3 = "a", phiên 5 = "f" quá ngắn → bỏ.
+    # Vòng 2: f chỉ còn 1 lượt → bỏ → phiên 4 = "ab" quá ngắn → bỏ. Chỉ lọc một vòng sẽ giữ sai phiên 4.
     occ = occurrences({1: "abc", 2: "abc", 3: "ade", 4: "fab", 5: "fxy"})
     kept, _ = filter_sessions(occ, min_track_occurrences=2, min_session_length=3)
     assert as_strings(kept) == {1: "abc", 2: "abc"}
@@ -76,7 +78,7 @@ def test_log_counts_every_filter_step():
 
 def test_build_drops_tracks_without_usable_features_before_filtering(toy_mpd):
     mpd_dir, db = toy_mpd
-    r = build(mpd_dir, db, n_slices=None, min_track_occurrences=2, min_session_length=3)
+    r = build(mpd_dir, db, SMALL)
     # t (tempo 0) và m (không có features) bị loại → phiên 3 còn "ab" < 3 bài → bị bỏ
     assert as_strings(r.sessions.assign(track_id=r.sessions["track_id"].str[0])) == {0: "abcd", 1: "abc", 2: "abc", 4: "abc", 5: "dabc"}
     assert sorted(r.tracks["track_id"]) == [ID[c] for c in "abcd"]
@@ -84,11 +86,37 @@ def test_build_drops_tracks_without_usable_features_before_filtering(toy_mpd):
     assert (a["track_name"], a["artist_name"], a["tempo"], a["key"], a["mode"], a["energy"]) == ("Song a", "Artist a", 120.0, 0, 0, 0.5)
 
 
-def test_same_random_seed_samples_the_same_slices(toy_mpd):
+def test_same_random_seed_gives_the_same_sessions_and_tracks(toy_mpd):
     mpd_dir, db = toy_mpd
-    runs = [build(mpd_dir, db, n_slices=2, random_seed=7, min_track_occurrences=1, min_session_length=3) for _ in range(2)]
-    pd.testing.assert_frame_equal(runs[0].sessions, runs[1].sessions)
-    assert runs[0].sessions["session_id"].nunique() < 6  # chỉ 2/3 slice được lấy
+    cfg = BuildConfig(n_slices=2, random_seed=7, min_track_occurrences=1, min_session_length=3)
+    first, second = build(mpd_dir, db, cfg), build(mpd_dir, db, cfg)
+    pd.testing.assert_frame_equal(first.sessions, second.sessions)
+    pd.testing.assert_frame_equal(first.tracks, second.tracks)
+
+
+def test_different_random_seeds_sample_different_slices(toy_mpd):
+    mpd_dir, db = toy_mpd
+    samples = {
+        frozenset(build(mpd_dir, db, BuildConfig(n_slices=2, random_seed=s, min_track_occurrences=1, min_session_length=3)).sessions["session_id"])
+        for s in range(10)
+    }
+    assert len(samples) > 1
+
+
+def test_log_starts_from_raw_sample_and_shows_share_kept(toy_mpd):
+    mpd_dir, db = toy_mpd
+    r = build(mpd_dir, db, SMALL)
+    assert (r.log[0].name, r.log[0].n_occurrences) == ("lấy mẫu 3 slice", 22)  # kể cả lượt file local
+    assert (r.log[1].name, r.log[1].n_occurrences) == ("bỏ bài không có features dùng được", 19)  # bỏ L, t, m
+    assert "86.4%" in format_log(r.log)  # 19 / 22 lượt còn lại
+
+
+def test_duplicate_session_id_across_slices_is_rejected(toy_mpd):
+    mpd_dir, db = toy_mpd
+    extra = mpd_dir / "data" / "mpd.slice.3000-3999.json"
+    extra.write_text(json.dumps({"playlists": [{"pid": 0, "tracks": [{"pos": 0, "track_uri": f"spotify:track:{ID['a']}"}]}]}), encoding="utf-8")
+    with pytest.raises(ValueError, match="session_id"):
+        build(mpd_dir, db, SMALL)
 
 
 def test_cli_writes_raw_files_and_log(toy_mpd, tmp_path):

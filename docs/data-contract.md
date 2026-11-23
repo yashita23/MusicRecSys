@@ -42,7 +42,7 @@ Danh mục bài. Mỗi bài một dòng.
 | `energy` | float | 0–1 |
 | `n_occurrences` | int | Số lượt xuất hiện **trong các phiên train**, ≥ 0 |
 
-Không cột nào được null. Bài có tempo ≤ 0, không xác định được tông (`key` = −1) hoặc thiếu features bị loại ngay ở bước lọc (#5), như thể không ghép được. Các bài này chiếm 0,11% số bài và 0,03% số lượt (ADR 0001).
+Không cột nào được null. Ở bước lọc (#5), những bài sau bị loại như thể không ghép được: thiếu features, tempo ≤ 0, không xác định được tông (`key` ngoài 0–11, gồm cả −1), `mode` ∉ {0, 1}, hoặc `energy` ngoài 0–1. Đây là `usable_mask` trong `src/data/coverage.py`. Các bài này chiếm khoảng 0,11% số bài và 0,03% số lượt (ADR 0001).
 
 ## sessions.parquet
 
@@ -97,7 +97,7 @@ Mỗi mô hình có index riêng và chỉ chứa những bài nó đã học đ
 
 ## File trung gian của A
 
-Chỉ dùng giữa các ticket của A (#5 → #6, #7). B và C không đọc các file này.
+Chỉ dùng giữa các ticket của A (#5 → #6, #7). B và C không đọc các file này, nên luật "sửa cả ba nơi" ở đầu tài liệu không áp dụng: schema của chúng định nghĩa trong `src/data/build.py` (`RAW_TRACK_COLUMNS`) và được kiểm tra ở `tests/test_build.py`.
 
 | file | do ai tạo | cột |
 | --- | --- | --- |
