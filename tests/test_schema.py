@@ -61,6 +61,7 @@ def test_tracks_missing_column_is_reported():
         ({"key": [9, -1, 2]}, "key"),
         ({"camelot": ["8A", "13B", "10B"]}, "camelot"),
         ({"camelot": ["8B", "8B", "10B"]}, "camelot"),  # 8B nhưng mode = 0
+        ({"camelot": ["8A", "8B", "5B"]}, "camelot"),   # D trưởng là 10B, không phải 5B
         ({"track_id": [A, A, C]}, "track_id"),
         ({"track_id": [A, "short", C]}, "track_id"),
         ({"n_occurrences": [10, -1, 0]}, "n_occurrences"),
@@ -189,6 +190,7 @@ def test_valid_item_embeddings_pass():
         (np.zeros((3, 8), dtype=np.float64), embedding_index(), "float32"),
         (np.zeros(3, dtype=np.float32), embedding_index(), "2 chiều"),
         (np.zeros((3, 8), dtype=np.float32), embedding_index((A, A, C)), "track_id"),
+        (np.full((3, 8), np.nan, dtype=np.float32), embedding_index(), "hữu hạn"),
     ],
 )
 def test_bad_item_embeddings_are_reported(vectors, index, expected):

@@ -16,6 +16,14 @@ def test_fake_dataset_has_every_split_and_eval_rows_for_val_and_test():
     assert set(d.candidates) == {"val", "test"}
 
 
+def test_fake_dataset_covers_repeated_tracks_and_targets_unseen_in_train():
+    d = make_fake_dataset(n_sessions=60, n_tracks=300, random_seed=1)
+    repeats = d.sessions.duplicated(["session_id", "track_id"])
+    assert repeats.any(), "cần có phiên lặp bài"
+    train_tracks = set(d.sessions.loc[d.sessions["split"] == "train", "track_id"])
+    assert (~d.eval_targets["target_track_id"].isin(train_tracks)).any(), "cần có bài đích không có trong train"
+
+
 def test_same_random_seed_gives_same_data():
     a = make_fake_dataset(n_sessions=30, n_tracks=200, random_seed=5)
     b = make_fake_dataset(n_sessions=30, n_tracks=200, random_seed=5)

@@ -35,10 +35,10 @@ Danh mục bài. Mỗi bài một dòng.
 | `track_name` | string | |
 | `artist_name` | string | |
 | `tempo` | float | Giá trị thô từ bộ features, > 0 |
-| `bpm` | float | BPM mà điểm mix dùng, > 0 |
+| `bpm` | float | BPM mà điểm mix dùng, > 0. Hiện bằng `tempo` (tempo của Spotify vốn đã là BPM); nếu #6 đổi cách tính thì phải cập nhật dòng này |
 | `key` | int | 0–11 (0 = C, 1 = C♯/D♭, …) |
 | `mode` | int | 0 = thứ, 1 = trưởng |
-| `camelot` | string | `1A`–`12B`; chữ `A` khi `mode` = 0, chữ `B` khi `mode` = 1 |
+| `camelot` | string | `1A`–`12B`, phải bằng `camelot_code(key, mode)` trong `src/features/camelot.py` (C trưởng = 8B, A thứ = 8A) |
 | `energy` | float | 0–1 |
 | `n_occurrences` | int | Số lượt xuất hiện **trong các phiên train**, ≥ 0 |
 
@@ -70,7 +70,7 @@ Seed và bài đích của các phiên val/test (ADR 0003). Mỗi phiên một d
 | `seed_track_ids` | list[string] | Đúng 5 bài, chính là `pos` 0–4 của phiên |
 | `target_track_id` | string | Chính là `pos` 5 của phiên; không nằm trong seed |
 
-- Phiên có bài đích trùng một bài trong seed thì bị **bỏ**, vì bài trong seed bị loại khỏi ứng viên nên không mô hình nào đoán được.
+- Mọi phiên val/test đều phải có mặt, trừ phiên có bài đích trùng một bài trong seed. Những phiên đó bị **bỏ**, vì bài trong seed bị loại khỏi ứng viên nên không mô hình nào đoán được.
 - Phiên có bài đích không có trong train thì được **giữ** và tính là trượt cho mọi mô hình. #7 báo cáo tỉ lệ của những phiên này.
 
 ## candidates/{model}_{split}_run{r}.parquet
@@ -84,16 +84,16 @@ Top-100 ứng viên mà một mô hình gu chọn ra cho mỗi phiên trong `eva
 | `track_id` | string | Có trong `tracks.parquet`; không trùng nhau trong một phiên; không nằm trong seed |
 | `taste_score` | float | Điểm gu, hữu hạn, không tăng theo `rank` (rank 1 có điểm cao nhất) |
 
-Mỗi phiên có đúng 100 dòng. Bước re-rank tự chuẩn hóa `taste_score` thành `gu_norm`, nên mô hình không cần chuẩn hóa trước.
+Mọi phiên trong `eval_targets` của `split` đều phải có ứng viên, mỗi phiên đúng 100 dòng. Bước xếp lại tự chuẩn hóa `taste_score` thành `gu_norm`, nên mô hình không cần chuẩn hóa trước.
 
 ## item_embeddings/{model}.npy và {model}_tracks.parquet
 
 Vector bài của các mô hình có embedding (ALS, item2vec). App và bước tính vector phiên dùng các file này.
 
-- `{model}.npy`: mảng `float32` có shape `(n, d)`.
+- `{model}.npy`: mảng `float32` có shape `(n, d)`, mọi phần tử hữu hạn.
 - `{model}_tracks.parquet`: cột `row` (int, 0…n−1, liền mạch) và cột `track_id` (string, duy nhất, có trong `tracks.parquet`). Hàng `row` = i ứng với vector thứ i.
 
-Mỗi mô hình có index riêng và chỉ chứa những bài nó đã học được, không có vector 0 lấp chỗ trống.
+Mỗi mô hình có index riêng và chỉ chứa những bài nó đã học được, tức là bài có xuất hiện trong train. Không có vector 0 lấp chỗ trống.
 
 ## Kiểm tra
 
@@ -107,3 +107,5 @@ Dữ liệu giả cho B và C khi chưa có dữ liệu thật:
 ```bash
 python -m src.data.fake --out data/fake        # sinh mọi file theo bố cục ở trên
 ```
+
+Dữ liệu giả cố ý có đủ các trường hợp khó: phiên lặp bài, bài đích không có trong train (luôn trượt), và phiên val/test có bài đích nằm trong seed (không có trong `eval_targets`). Candidates giả là ngẫu nhiên, nên chỉ dùng để kiểm tra code chạy đúng, không dùng để so điểm.

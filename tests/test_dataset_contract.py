@@ -95,6 +95,39 @@ def test_n_occurrences_must_count_train_sessions_only():
         check(tracks, sessions, eval_targets, candidates)
 
 
+def add_val_session(tracks, sessions, session_id, track_ids):
+    """Thêm một phiên val; giữ n_occurrences đúng vì phiên val không được tính."""
+    extra = pd.DataFrame([{"session_id": session_id, "split": "val", "pos": p, "track_id": t} for p, t in enumerate(track_ids)])
+    return tracks, pd.concat([sessions, extra], ignore_index=True)
+
+
+def test_eligible_val_session_missing_from_eval_targets_is_reported():
+    tracks, sessions, eval_targets, candidates = small_dataset()
+    tracks, sessions = add_val_session(tracks, sessions, 3, T[1:11])  # bài đích T6 ∉ seed → phải có trong eval_targets
+    with pytest.raises(SchemaError, match="eval_targets thiếu"):
+        check(tracks, sessions, eval_targets, candidates)
+
+
+def test_val_session_whose_target_is_in_seed_may_be_left_out():
+    tracks, sessions, eval_targets, candidates = small_dataset()
+    tracks, sessions = add_val_session(tracks, sessions, 3, T[:5] + [T[0]] + T[5:9])  # bài đích T0 nằm trong seed
+    check(tracks, sessions, eval_targets, candidates)
+
+
+def test_every_eval_session_needs_candidates():
+    tracks, sessions, eval_targets, candidates = small_dataset()
+    with pytest.raises(SchemaError, match="không có ứng viên"):
+        check(tracks, sessions, eval_targets, candidates.iloc[0:0])
+
+
+def test_embeddings_only_hold_tracks_learned_from_train():
+    tracks, sessions, eval_targets, candidates = small_dataset()
+    index = pd.DataFrame({"row": [0, 1], "track_id": [T[0], T[10]]})  # T10 không có trong train
+    vectors = np.ones((2, 4), dtype=np.float32)
+    with pytest.raises(SchemaError, match="train"):
+        check(tracks, sessions, eval_targets, candidates, embeddings={"als": (vectors, index)})
+
+
 def test_embedding_tracks_must_exist_in_tracks():
     tracks, sessions, eval_targets, candidates = small_dataset()
     index = pd.DataFrame({"row": [0, 1], "track_id": [T[0], "z" * 22]})
