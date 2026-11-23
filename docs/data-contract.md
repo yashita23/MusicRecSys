@@ -95,6 +95,16 @@ Vector bài của các mô hình có embedding (ALS, item2vec). App và bước 
 
 Mỗi mô hình có index riêng và chỉ chứa những bài nó đã học được, tức là bài có xuất hiện trong train. Không có vector 0 lấp chỗ trống.
 
+## File trung gian của A
+
+Chỉ dùng giữa các ticket của A (#5 → #6, #7). B và C không đọc các file này.
+
+| file | do ai tạo | cột |
+| --- | --- | --- |
+| `sessions_raw.parquet` | #5 | `session_id`, `pos`, `track_id`. Như `sessions.parquet` nhưng chưa có `split`; đã lọc (mỗi bài ≥ 5 lượt, mỗi phiên ≥ 10 bài, lặp đến khi ổn định) và đánh số lại `pos` |
+| `tracks_raw.parquet` | #5 | `track_id`, `track_name`, `artist_name`, `tempo`, `key`, `mode`, `energy`. Đúng các bài còn trong `sessions_raw`, mọi bài đều dùng được |
+| `build_log.json` | #5 | Số phiên, số bài, số lượt sau từng bước lọc, kèm cấu hình (`n_slices`, `random_seed`) |
+
 ## Kiểm tra
 
 ```python
