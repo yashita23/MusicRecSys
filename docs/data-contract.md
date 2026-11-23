@@ -11,7 +11,8 @@ Muốn đổi schema thì mở PR sửa cả ba nơi (tài liệu này, `schema.
 ├── tracks.parquet
 ├── sessions.parquet
 ├── eval_targets.parquet
-└── split_report.json                    # số phiên mỗi split, số phiên bị bỏ, tỉ lệ bài đích không có trong train
+├── split_report.json                    # báo cáo chia tập, xem mục split_report.json
+└── sessions_raw.parquet, tracks_raw.parquet, build_log.json   # file trung gian của A, giữ lại từ v1
 
 <root>/                                  # Kaggle Dataset mixnext-candidates
 └── candidates/{model}_{split}_run{r}.parquet
@@ -74,6 +75,19 @@ Seed và bài đích của các phiên val/test (ADR 0003). Mỗi phiên một d
 
 - Mọi phiên val/test đều phải có mặt, trừ phiên có bài đích trùng một bài trong seed. Những phiên đó bị **bỏ**, vì bài trong seed bị loại khỏi ứng viên nên không mô hình nào đoán được.
 - Phiên có bài đích không có trong train thì được **giữ** và tính là trượt cho mọi mô hình. #7 báo cáo tỉ lệ của những phiên này.
+
+## split_report.json
+
+Báo cáo đi kèm ba bảng trên, do `src/data/split.py` (`SplitReport`) ghi ra. `python -m src.data.fake` cũng ghi file này. Đây là báo cáo chứ không phải dữ liệu, nên `schema.py` không có validator cho nó.
+
+| khóa | ý nghĩa |
+| --- | --- |
+| `random_seed` | `random_seed` dùng để chia tập |
+| `n_sessions` | `{train, val, test}` → số phiên |
+| `n_eval_targets` | `{val, test}` → số phiên trong `eval_targets` |
+| `n_dropped_target_in_seed` | `{val, test}` → số phiên bị bỏ vì bài đích nằm trong seed |
+| `share_target_unseen_in_train` | `{val, test}` → tỉ lệ bài đích không có trong train (luôn tính là trượt) |
+| `fingerprint` | sha256 của `tracks`, `sessions`, `eval_targets` theo đúng thứ tự dòng. Chạy lại ra cùng giá trị nghĩa là ra cùng dữ liệu |
 
 ## candidates/{model}_{split}_run{r}.parquet
 

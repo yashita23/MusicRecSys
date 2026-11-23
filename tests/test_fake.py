@@ -1,6 +1,6 @@
 import pandas as pd
 
-from src.data.fake import make_fake_dataset
+from src.data.fake import make_fake_dataset, write_fake
 from src.data.schema import validate_dataset
 
 
@@ -31,3 +31,11 @@ def test_same_random_seed_gives_same_data():
     pd.testing.assert_frame_equal(a.sessions, b.sessions)
     pd.testing.assert_frame_equal(a.candidates["val"], b.candidates["val"])
     assert not a.sessions.equals(c.sessions)
+
+
+def test_written_fake_data_includes_split_report(tmp_path):
+    import json
+    d = make_fake_dataset(n_sessions=30, n_tracks=200, random_seed=5)
+    write_fake(d, tmp_path)
+    report = json.loads((tmp_path / "split_report.json").read_text(encoding="utf-8"))
+    assert report["n_eval_targets"]["val"] == len(d.eval_targets[d.eval_targets["split"] == "val"])

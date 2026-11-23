@@ -75,10 +75,17 @@ def test_session_whose_target_repeats_a_seed_track_is_left_out():
 
 def test_prepare_reports_targets_unseen_in_train():
     r = prepare(*unique_target_raw(20), random_seed=3)
-    assert r.report["n_sessions"] == {"train": 16, "val": 2, "test": 2}
-    assert r.report["n_eval_targets"] == {"val": 2, "test": 2}
-    assert r.report["n_dropped_target_in_seed"] == {"val": 0, "test": 0}
-    assert r.report["share_target_unseen_in_train"] == {"val": 1.0, "test": 1.0}
+    assert r.report.n_sessions == {"train": 16, "val": 2, "test": 2}
+    assert r.report.n_eval_targets == {"val": 2, "test": 2}
+    assert r.report.n_dropped_target_in_seed == {"val": 0, "test": 0}
+    assert r.report.share_target_unseen_in_train == {"val": 1.0, "test": 1.0}
+
+
+def test_fingerprint_proves_rerun_gives_same_data():
+    a = prepare(*unique_target_raw(20), random_seed=3).report.fingerprint
+    b = prepare(*unique_target_raw(20), random_seed=3).report.fingerprint
+    c = prepare(*unique_target_raw(20), random_seed=4).report.fingerprint
+    assert a == b and a != c
 
 
 def test_cli_writes_files_that_satisfy_the_contract(tmp_path):
@@ -87,7 +94,10 @@ def test_cli_writes_files_that_satisfy_the_contract(tmp_path):
     raw.mkdir()
     sessions_raw.to_parquet(raw / "sessions_raw.parquet", index=False)
     tracks_raw.to_parquet(raw / "tracks_raw.parquet", index=False)
+    (raw / "build_log.json").write_text("{}", encoding="utf-8")
     main(["--raw-dir", str(raw), "--out", str(out), "--random-seed", "3"])
+    for name in ("sessions_raw.parquet", "tracks_raw.parquet", "build_log.json"):
+        assert (out / name).exists(), f"v2 phải giữ {name} của v1"
     tracks, sessions, eval_targets = (pd.read_parquet(out / f"{n}.parquet") for n in ("tracks", "sessions", "eval_targets"))
     validate_dataset(tracks, sessions, eval_targets)
     report = json.loads((out / "split_report.json").read_text(encoding="utf-8"))
@@ -95,7 +105,7 @@ def test_cli_writes_files_that_satisfy_the_contract(tmp_path):
     assert np.isclose(report["share_target_unseen_in_train"]["val"], 1.0)
 
 
-def test_same_random_seed_same_split_and_different_seed_differs():
+def test_same_random_seed_same_split_and_different_random_seed_differs():
     a = split_sessions(raw_sessions(100), random_seed=1)
     b = split_sessions(raw_sessions(100), random_seed=1)
     c = split_sessions(raw_sessions(100), random_seed=2)
