@@ -42,7 +42,7 @@ Danh mục bài. Mỗi bài một dòng.
 | `energy` | float | 0–1 |
 | `n_occurrences` | int | Số lượt xuất hiện **trong các phiên train**, ≥ 0 |
 
-Không cột nào được null. Ở bước lọc (#5), những bài sau bị loại như thể không ghép được: thiếu features, tempo ≤ 0, không xác định được tông (`key` ngoài 0–11, gồm cả −1), `mode` ∉ {0, 1}, hoặc `energy` ngoài 0–1. Đây là `usable_mask` trong `src/data/coverage.py`. Các bài này chiếm khoảng 0,11% số bài và 0,03% số lượt (ADR 0001).
+Không cột nào được null. Ở bước lọc (#5), những bài sau bị loại như thể không ghép được: thiếu features, tempo ≤ 0, không xác định được tông (`key` ngoài 0–11, gồm cả −1), `mode` ∉ {0, 1}, hoặc `energy` ngoài 0–1. Đây là `usable_mask` trong `src/data/coverage.py`. Các bài này chiếm khoảng 0,11% số bài và 0,03% số lượt (ADR 0001). Đến bước tạo `tracks.parquet` (`make_tracks` trong `src/features/audio.py`, #6), nếu còn bài nào như vậy thì đó là lỗi của #5: hàm **báo lỗi** chứ không tự bỏ, vì tự bỏ sẽ làm phiên trỏ tới bài không còn trong `tracks`.
 
 ## sessions.parquet
 
