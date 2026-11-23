@@ -10,7 +10,8 @@ Muốn đổi schema thì mở PR sửa cả ba nơi (tài liệu này, `schema.
 <root>/                                  # Kaggle Dataset mixnext-processed, hoặc data/processed/ ở máy
 ├── tracks.parquet
 ├── sessions.parquet
-└── eval_targets.parquet
+├── eval_targets.parquet
+└── split_report.json                    # số phiên mỗi split, số phiên bị bỏ, tỉ lệ bài đích không có trong train
 
 <root>/                                  # Kaggle Dataset mixnext-candidates
 └── candidates/{model}_{split}_run{r}.parquet
@@ -21,6 +22,7 @@ Muốn đổi schema thì mở PR sửa cả ba nơi (tài liệu này, `schema.
     └── {model}_tracks.parquet
 ```
 
+- `tracks`, `sessions`, `eval_targets` được tạo bằng `python -m src.data.split --raw-dir <thư mục #5> --out <thư mục ra>` (#6, #7). Mỗi phiên được gán vào một split theo hoán vị ngẫu nhiên của `session_id` với `random_seed` = 42, tỉ lệ 80/10/10.
 - `model` ∈ `popularity`, `itemknn`, `als`, `item2vec`, `sasrec` (dữ liệu giả dùng `fake`).
 - `split` ∈ `val`, `test`.
 - `r` là số thứ tự lần chạy: 0, 1, 2.
