@@ -19,12 +19,15 @@ K = 10
 
 @dataclass(frozen=True)
 class Accuracy:
+    """Độ chính xác trung bình trên các phiên được chấm của một split."""
+
     split: str
     n_sessions: int
     k: int
-    hit_rate: float  # HitRate@k
-    ndcg: float      # NDCG@k
-    mrr: float       # MRR trên toàn danh sách
+    list_length: int  # số bài trong danh sách của mỗi phiên; MRR chỉ so được giữa các lần chấm cùng list_length
+    hit_rate: float   # HitRate@k
+    ndcg: float       # NDCG@k
+    mrr: float        # MRR trên toàn danh sách
 
 
 def target_ranks(ranked: pd.DataFrame, eval_targets: pd.DataFrame) -> pd.Series:
@@ -34,14 +37,33 @@ def target_ranks(ranked: pd.DataFrame, eval_targets: pd.DataFrame) -> pd.Series:
     return hits.groupby("session_id")["rank"].min().reindex(target_of.index, fill_value=MISS)
 
 
-def scored_targets(ranked: pd.DataFrame, eval_targets: pd.DataFrame) -> pd.DataFrame:
-    """Các dòng eval_targets được chấm: mọi phiên thuộc split của danh sách.
+def _list_problems(ranked: pd.DataFrame) -> list[str]:
+    """Mỗi phiên: rank liền mạch 1…n, không bài nào xuất hiện hai lần."""
+    problems = []
+    by_rank = ranked.sort_values(["session_id", "rank"], kind="stable")
+    expected = by_rank.groupby("session_id").cumcount() + 1
+    n_bad = int((by_rank["rank"].to_numpy() != expected.to_numpy()).sum())
+    if n_bad:
+        problems.append(f"rank phải liền mạch 1…n trong mỗi phiên ({n_bad} dòng sai)")
+    lengths = sorted(ranked.groupby("session_id").size().unique())
+    if len(lengths) > 1:
+        problems.append(f"mọi phiên phải có danh sách cùng độ dài, đang có {lengths}")
+    n_dup = int(ranked.duplicated(["session_id", "track_id"]).sum())
+    if n_dup:
+        problems.append(f"track_id bị trùng trong cùng một phiên ({n_dup} dòng)")
+    return problems
+
+
+def scored_targets(ranked: pd.DataFrame, eval_targets: pd.DataFrame, sample: bool = False) -> pd.DataFrame:
+    """Các dòng eval_targets được chấm: mọi phiên thuộc split của danh sách (sample=True: chỉ các phiên có trong danh sách).
 
     Split suy ra từ các phiên có trong danh sách và phải là một split duy nhất. Báo lỗi nếu danh sách
-    có phiên lạ, thiếu phiên nào của split đó, hoặc chứa bài trong seed của chính phiên đó.
+    có phiên lạ, thiếu phiên nào của split đó (trừ khi sample), hoặc chứa bài trong seed của chính phiên đó.
     """
+    if ranked.empty:
+        raise SchemaError("candidates", ["danh sách rỗng, không có phiên nào để chấm"])
     split_of = eval_targets.set_index("session_id")["split"]
-    sessions = pd.Index(ranked["session_id"].unique())
+    sessions =pd.Index(ranked["session_id"].unique())
     unknown = sessions.difference(split_of.index)
     if len(unknown):
         raise SchemaError("candidates", [f"{len(unknown)} phiên không có trong eval_targets"])
@@ -49,8 +71,10 @@ def scored_targets(ranked: pd.DataFrame, eval_targets: pd.DataFrame) -> pd.DataF
     if len(splits) != 1:
         raise SchemaError("candidates", [f"mọi phiên phải thuộc một split, đang có {splits}"])
     targets = eval_targets[eval_targets["split"] == splits[0]]
+    if sample:
+        targets = targets[targets["session_id"].isin(sessions)]
 
-    problems: list[str] = []
+    problems = _list_problems(ranked)
     n_without = len(set(targets["session_id"]) - set(sessions))
     if n_without:
         problems.append(f"{n_without} phiên trong eval_targets của {splits[0]} không có ứng viên")
@@ -63,17 +87,19 @@ def scored_targets(ranked: pd.DataFrame, eval_targets: pd.DataFrame) -> pd.DataF
     return targets
 
 
-def evaluate(candidates: pd.DataFrame, eval_targets: pd.DataFrame, k: int = K) -> Accuracy:
+def evaluate(candidates: pd.DataFrame, eval_targets: pd.DataFrame, k: int = K, sample: bool = False) -> Accuracy:
     """HitRate@k, NDCG@k và MRR của một danh sách xếp hạng (cột session_id, rank, track_id).
 
     Nhận file candidates của một split, hoặc danh sách đã xếp lại sau re-rank. eval_targets có thể chứa cả val lẫn test.
+    Mặc định mọi phiên của split phải có danh sách; sample=True để chấm một mẫu phiên (grid search #25).
     """
-    targets = scored_targets(candidates, eval_targets)
+    targets = scored_targets(candidates, eval_targets, sample=sample)
     ranks = target_ranks(candidates, targets).to_numpy()
     return Accuracy(
         split=str(targets["split"].iloc[0]),
         n_sessions=len(ranks),
         k=k,
+        list_length=int(candidates.groupby("session_id").size().iloc[0]),
         hit_rate=hit_rate(ranks, k),
         ndcg=ndcg(ranks, k),
         mrr=mrr(ranks),
