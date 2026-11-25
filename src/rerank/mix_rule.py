@@ -71,12 +71,41 @@ class MixComponents:
 
 
 @dataclass(frozen=True)
-class _Features:
+class TrackFeatures:
+    """Đặc trưng âm thanh của cả danh mục, tra theo track_id; dùng chung cho điểm mix và chỉ số độ mượt."""
+
     row_of_track: pd.Index
     bpm: np.ndarray
     key_num: np.ndarray
     key_letter: np.ndarray
     energy: np.ndarray
+
+    @classmethod
+    def from_tracks(cls, tracks: pd.DataFrame) -> TrackFeatures:
+        """Từ bảng có cột track_id, bpm, camelot, energy (tracks.parquet)."""
+        key_num, key_letter = parse_camelot(tracks["camelot"].to_numpy())
+        return cls(
+            row_of_track=pd.Index(tracks["track_id"]),
+            bpm=tracks["bpm"].to_numpy(dtype=float),
+            key_num=key_num,
+            key_letter=key_letter,
+            energy=tracks["energy"].to_numpy(dtype=float),
+        )
+
+    def rows(self, track_ids: Sequence[str]) -> np.ndarray:
+        rows = self.row_of_track.get_indexer(track_ids)
+        if (rows < 0).any():
+            raise KeyError(f"không có trong tracks: {preview_ids(t for t, r in zip(track_ids, rows) if r < 0)}")
+        return rows
+
+    def components(self, rows_a: np.ndarray, rows_b: np.ndarray) -> MixComponents:
+        """Ba điểm thành phần cho từng cặp (a_i, b_i); rows_a có thể là một dòng để so với nhiều ứng viên."""
+        a, b = rows_a, rows_b
+        return MixComponents(
+            bpm=s_bpm(self.bpm[a], self.bpm[b]),
+            key=_key_score(self.key_num[a], self.key_letter[a], self.key_num[b], self.key_letter[b]),
+            energy=s_energy(self.energy[a], self.energy[b]),
+        )
 
 
 class RuleMix:
@@ -87,14 +116,7 @@ class RuleMix:
     """
 
     def __init__(self, tracks: pd.DataFrame, weights: MixWeights = MixWeights()):
-        key_num, key_letter = parse_camelot(tracks["camelot"].to_numpy())
-        self._features = _Features(
-            row_of_track=pd.Index(tracks["track_id"]),
-            bpm=tracks["bpm"].to_numpy(dtype=float),
-            key_num=key_num,
-            key_letter=key_letter,
-            energy=tracks["energy"].to_numpy(dtype=float),
-        )
+        self.features = TrackFeatures.from_tracks(tracks)
         self.weights = weights
 
     def with_weights(self, weights: MixWeights) -> RuleMix:
@@ -103,20 +125,9 @@ class RuleMix:
         clone.weights = weights
         return clone
 
-    def _rows(self, track_ids: Sequence[str]) -> np.ndarray:
-        rows = self._features.row_of_track.get_indexer(track_ids)
-        if (rows < 0).any():
-            raise KeyError(f"không có trong tracks: {preview_ids(t for t, r in zip(track_ids, rows) if r < 0)}")
-        return rows
-
     def components(self, current_track_id: str, candidate_track_ids: Sequence[str]) -> MixComponents:
-        f = self._features
-        a, b = self._rows([current_track_id]), self._rows(list(candidate_track_ids))
-        return MixComponents(
-            bpm=s_bpm(f.bpm[a], f.bpm[b]),
-            key=_key_score(f.key_num[a], f.key_letter[a], f.key_num[b], f.key_letter[b]),
-            energy=s_energy(f.energy[a], f.energy[b]),
-        )
+        f = self.features
+        return f.components(f.rows([current_track_id]), f.rows(list(candidate_track_ids)))
 
     def __call__(self, current_track_id: str, candidate_track_ids: Sequence[str]) -> np.ndarray:
         return self.components(current_track_id, candidate_track_ids).weighted(self.weights)
