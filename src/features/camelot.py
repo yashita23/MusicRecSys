@@ -27,3 +27,20 @@ def parse_camelot(codes: Sequence[str] | np.ndarray) -> tuple[np.ndarray, np.nda
         raise ValueError(f"mã Camelot không hợp lệ (phải trong 1A–12B): {preview_ids(arr[~valid].tolist())}")
     return np.char.rstrip(arr, "AB").astype(int), np.char.lstrip(arr, "0123456789")
 
+
+def _wheel_step(num_a: np.ndarray, num_b: np.ndarray) -> np.ndarray:
+    step = np.abs(num_a - num_b) % 12
+    return np.minimum(step, 12 - step)  # vòng: 12 ↔ 1 cách nhau 1
+
+
+def same_key(num_a: np.ndarray, letter_a: np.ndarray, num_b: np.ndarray, letter_b: np.ndarray) -> np.ndarray:
+    """Cùng mã Camelot."""
+    return (num_a == num_b) & (letter_a == letter_b)
+
+
+def compatible_keys(num_a: np.ndarray, letter_a: np.ndarray, num_b: np.ndarray, letter_b: np.ndarray) -> np.ndarray:
+    """Tông tương thích: cùng mã, ±1 số cùng chữ, hoặc cùng số khác chữ. Bước chéo (8A→9B) không tính."""
+    step = _wheel_step(num_a, num_b)
+    same_letter = letter_a == letter_b
+    return (same_letter & (step <= 1)) | (~same_letter & (step == 0))
+
