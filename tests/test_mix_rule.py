@@ -92,3 +92,21 @@ def test_scoring_one_track_against_100_candidates_takes_a_few_ms():
         mix(ids[0], candidates)
     mean_ms = (time.perf_counter() - t0) / 200 * 1000
     assert mean_ms < 5, f"{mean_ms:.2f} ms mỗi lần chấm"
+
+
+def test_rule_mix_exposes_component_scores_for_ablation():
+    parts = RuleMix(tracks()).components(A, [B, C])
+    np.testing.assert_allclose(parts.bpm, [0.8889, 1.0], atol=1e-4)
+    np.testing.assert_allclose(parts.key, [0.8, 0.0])
+    np.testing.assert_allclose(parts.energy, [0.8, 1.0])
+
+
+def test_with_weights_rescores_without_rebuilding():
+    key_only = RuleMix(tracks()).with_weights(MixWeights(bpm=0.0, key=1.0, energy=0.0))
+    np.testing.assert_allclose(key_only(A, [B, C]), [0.8, 0.0])
+
+
+@pytest.mark.parametrize("bad", ["13A", "0B", "8a", "8C", "A8"])
+def test_invalid_camelot_code_is_an_error(bad):
+    with pytest.raises(ValueError, match="Camelot"):
+        s_key(np.array(["8A"]), np.array([bad]))
