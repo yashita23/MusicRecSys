@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 from src.data.fake import make_fake_dataset
+from src.data.schema import SchemaError
 from src.eval.run import evaluate
 from src.rerank.combine import rerank, rerank_candidates
 from src.rerank.mix_rule import RuleMix
@@ -97,3 +98,37 @@ def test_reranked_top_10_is_scorable_and_mix_sees_the_last_seed_track(fake):
     assert evaluate(reranked, fake.eval_targets).list_length == 10
     last_seed = targets["seed_track_ids"].map(lambda s: s[-1])
     assert seen == last_seed.value_counts().to_dict()
+
+
+@pytest.mark.parametrize(
+    "taste, mix, alpha, k, ids, message",
+    [
+        ([3.0, np.nan, 1.0], MIX, 0.5, 10, [A, B, C], "điểm gu"),
+        ([3.0, np.inf, 1.0], MIX, 0.5, 10, [A, B, C], "điểm gu"),
+        (TASTE, fixed_mix({A: 0.1, B: np.nan, C: 0.5}), 1.0, 10, [A, B, C], "điểm mix"),  # NaN đảo thứ tự cả ở α = 1
+        (TASTE, lambda cur, cands: np.array([0.1, 0.2]), 0.5, 10, [A, B, C], "độ dài"),
+        (TASTE, lambda cur, cands: 0.5, 0.5, 10, [A, B, C], "độ dài"),  # trả một số thay vì mảng
+        (TASTE, MIX, 1.5, 10, [A, B, C], "α"),
+        (TASTE, MIX, -0.1, 10, [A, B, C], "α"),
+        (TASTE, MIX, 0.5, 0, [A, B, C], "k"),
+        (TASTE, MIX, 0.5, 10, [A, A, C], "trùng"),
+    ],
+)
+def test_invalid_inputs_are_rejected_with_a_clear_message(taste, mix, alpha, k, ids, message):
+    with pytest.raises(ValueError, match=message):
+        rerank(ids, taste, NOW, mix, alpha=alpha, k=k)
+
+
+def test_candidates_of_a_session_missing_from_eval_targets_are_rejected(fake):
+    targets = fake.eval_targets[fake.eval_targets["session_id"] != fake.candidates["val"]["session_id"].iloc[0]]
+    with pytest.raises(SchemaError, match="không có trong eval_targets"):
+        rerank_candidates(fake.candidates["val"], targets, zero_mix, alpha=0.5)
+
+
+def test_empty_candidates_are_rejected(fake):
+    with pytest.raises(SchemaError, match="rỗng"):
+        rerank_candidates(fake.candidates["val"].iloc[:0], fake.eval_targets, zero_mix, alpha=0.5)
+
+
+def zero_mix(current, cands):
+    return np.zeros(len(cands))
