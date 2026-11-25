@@ -8,40 +8,32 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from src.data.preview import preview_ids
-from src.features.camelot import parse_camelot
+from src.features.camelot import compatible_keys, parse_camelot, same_key
+from src.features.track_features import TrackFeatures, bpm_delta
 
 BPM_FULL = 0.06   # lệch ≤ 6% → s_bpm = 1
 BPM_ZERO = 0.12   # lệch ≥ 12% → s_bpm = 0; ở giữa giảm tuyến tính
-TEMPO_RATIOS = (1.0, 2.0, 0.5)  # xét cả nhịp gấp đôi / một nửa
 KEY_SAME = 1.0
-KEY_NEIGHBOUR = 0.8  # ±1 số cùng chữ, hoặc cùng số khác chữ
+KEY_NEIGHBOUR = 0.8  # tông tương thích nhưng khác mã
 
 
-def bpm_delta(bpm_a: np.ndarray, bpm_b: np.ndarray) -> np.ndarray:
-    """Độ lệch BPM tương đối so với bài đang phát a: min_r |b·r − a| / a, r ∈ {1, 2, 0.5}."""
-    a = np.asarray(bpm_a, dtype=float)[..., None]
-    b = np.asarray(bpm_b, dtype=float)[..., None] * np.array(TEMPO_RATIOS)
-    return np.min(np.abs(b - a), axis=-1) / a[..., 0]
+def _bpm_score(delta: np.ndarray) -> np.ndarray:
+    return np.clip((BPM_ZERO - delta) / (BPM_ZERO - BPM_FULL), 0.0, 1.0)
+
+
+def _key_score(same: np.ndarray, compatible: np.ndarray) -> np.ndarray:
+    return np.where(same, KEY_SAME, np.where(compatible, KEY_NEIGHBOUR, 0.0))
 
 
 def s_bpm(bpm_a: np.ndarray, bpm_b: np.ndarray) -> np.ndarray:
-    """1 khi lệch ≤ 6%, giảm tuyến tính về 0 ở 12%."""
-    return np.clip((BPM_ZERO - bpm_delta(bpm_a, bpm_b)) / (BPM_ZERO - BPM_FULL), 0.0, 1.0)
-
-
-def _key_score(num_a: np.ndarray, letter_a: np.ndarray, num_b: np.ndarray, letter_b: np.ndarray) -> np.ndarray:
-    step = np.abs(num_a - num_b) % 12
-    step = np.minimum(step, 12 - step)  # vòng: 12 ↔ 1 cách nhau 1
-    same_letter = letter_a == letter_b
-    score = np.where(same_letter & (step == 0), KEY_SAME, 0.0)
-    neighbour = (same_letter & (step == 1)) | (~same_letter & (step == 0))
-    return np.where(neighbour, KEY_NEIGHBOUR, score)
+    """1 khi lệch ≤ 6%, giảm tuyến tính về 0 ở 12% (lệch tính bằng bpm_delta, xét ×2/×0.5)."""
+    return _bpm_score(bpm_delta(bpm_a, bpm_b))
 
 
 def s_key(camelot_a: Sequence[str] | np.ndarray, camelot_b: Sequence[str] | np.ndarray) -> np.ndarray:
     """Cùng mã = 1; ±1 số cùng chữ hoặc cùng số khác chữ = 0.8; còn lại (kể cả bước chéo) = 0."""
-    return _key_score(*parse_camelot(camelot_a), *parse_camelot(camelot_b))
+    a, b = parse_camelot(camelot_a), parse_camelot(camelot_b)
+    return _key_score(same_key(*a, *b), compatible_keys(*a, *b))
 
 
 def s_energy(energy_a: np.ndarray, energy_b: np.ndarray) -> np.ndarray:
@@ -70,44 +62,6 @@ class MixComponents:
         return w.bpm * self.bpm + w.key * self.key + w.energy * self.energy
 
 
-@dataclass(frozen=True)
-class TrackFeatures:
-    """Đặc trưng âm thanh của cả danh mục, tra theo track_id; dùng chung cho điểm mix và chỉ số độ mượt."""
-
-    row_of_track: pd.Index
-    bpm: np.ndarray
-    key_num: np.ndarray
-    key_letter: np.ndarray
-    energy: np.ndarray
-
-    @classmethod
-    def from_tracks(cls, tracks: pd.DataFrame) -> TrackFeatures:
-        """Từ bảng có cột track_id, bpm, camelot, energy (tracks.parquet)."""
-        key_num, key_letter = parse_camelot(tracks["camelot"].to_numpy())
-        return cls(
-            row_of_track=pd.Index(tracks["track_id"]),
-            bpm=tracks["bpm"].to_numpy(dtype=float),
-            key_num=key_num,
-            key_letter=key_letter,
-            energy=tracks["energy"].to_numpy(dtype=float),
-        )
-
-    def rows(self, track_ids: Sequence[str]) -> np.ndarray:
-        rows = self.row_of_track.get_indexer(track_ids)
-        if (rows < 0).any():
-            raise KeyError(f"không có trong tracks: {preview_ids(t for t, r in zip(track_ids, rows) if r < 0)}")
-        return rows
-
-    def components(self, rows_a: np.ndarray, rows_b: np.ndarray) -> MixComponents:
-        """Ba điểm thành phần cho từng cặp (a_i, b_i); rows_a có thể là một dòng để so với nhiều ứng viên."""
-        a, b = rows_a, rows_b
-        return MixComponents(
-            bpm=s_bpm(self.bpm[a], self.bpm[b]),
-            key=_key_score(self.key_num[a], self.key_letter[a], self.key_num[b], self.key_letter[b]),
-            energy=s_energy(self.energy[a], self.energy[b]),
-        )
-
-
 class RuleMix:
     """Điểm mix theo luật: w_b·s_bpm + w_k·s_key + w_e·s_energy.
 
@@ -127,7 +81,12 @@ class RuleMix:
 
     def components(self, current_track_id: str, candidate_track_ids: Sequence[str]) -> MixComponents:
         f = self.features
-        return f.components(f.rows([current_track_id]), f.rows(list(candidate_track_ids)))
+        current, candidates = f.rows([current_track_id]), f.rows(list(candidate_track_ids))
+        return MixComponents(
+            bpm=_bpm_score(f.bpm_delta(current, candidates)),
+            key=_key_score(f.same_key(current, candidates), f.compatible_keys(current, candidates)),
+            energy=1.0 - f.energy_gap(current, candidates),
+        )
 
     def __call__(self, current_track_id: str, candidate_track_ids: Sequence[str]) -> np.ndarray:
         return self.components(current_track_id, candidate_track_ids).weighted(self.weights)
