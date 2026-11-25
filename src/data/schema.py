@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from src.features.camelot import camelot_code
+from src.features.camelot import CAMELOT_PATTERN, camelot_code
 
 SPLITS = ("train", "val", "test")
 EVAL_SPLITS = ("val", "test")
@@ -30,7 +30,6 @@ CANDIDATES_COLUMNS = {"session_id": "int", "rank": "int", "track_id": "string", 
 EMBEDDING_INDEX_COLUMNS = {"row": "int", "track_id": "string"}
 
 TRACK_ID_PATTERN = r"^[A-Za-z0-9]{22}$"
-CAMELOT_PATTERN = r"^(?:[1-9]|1[0-2])[AB]$"
 NOT_A_TRACK_ID = "phải là Spotify ID 22 ký tự"
 
 

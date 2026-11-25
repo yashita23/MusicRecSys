@@ -4,15 +4,9 @@ from __future__ import annotations
 import pandas as pd
 
 from src.data.coverage import usable_mask
+from src.data.preview import preview_ids
 from src.data.schema import TRACKS_COLUMNS, SchemaError, count_train_occurrences, validate_tracks
 from src.features.camelot import camelot_code
-
-_SHOW_AT_MOST = 5
-
-
-def _some(ids: list[str]) -> str:
-    shown = ", ".join(sorted(ids)[:_SHOW_AT_MOST])
-    return shown + (", …" if len(ids) > _SHOW_AT_MOST else "")
 
 
 def make_tracks(tracks_raw: pd.DataFrame, sessions: pd.DataFrame) -> pd.DataFrame:
@@ -23,10 +17,10 @@ def make_tracks(tracks_raw: pd.DataFrame, sessions: pd.DataFrame) -> pd.DataFram
     """
     unusable = tracks_raw.loc[~usable_mask(tracks_raw), "track_id"].tolist()
     if unusable:
-        raise SchemaError("tracks_raw", [f"{len(unusable)} bài không dùng được (tempo ≤ 0, key ngoài 0–11, …; #5 lẽ ra đã loại): {_some(unusable)}"])
+        raise SchemaError("tracks_raw", [f"{len(unusable)} bài không dùng được (tempo ≤ 0, key ngoài 0–11, …; #5 lẽ ra đã loại): {preview_ids(unusable)}"])
     missing = sorted(set(sessions["track_id"]) - set(tracks_raw["track_id"]))
     if missing:
-        raise SchemaError("tracks_raw", [f"{len(missing)} bài trong sessions không có trong tracks_raw: {_some(missing)}"])
+        raise SchemaError("tracks_raw", [f"{len(missing)} bài trong sessions không có trong tracks_raw: {preview_ids(missing)}"])
 
     tracks = tracks_raw.astype({"key": "int64", "mode": "int64"})
     tracks["bpm"] = tracks["tempo"].astype(float)
