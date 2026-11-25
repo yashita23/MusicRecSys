@@ -92,3 +92,20 @@ def test_cli_writes_contract_files_and_reports_val_accuracy(tmp_path, capsys):
     assert report["itemknn"]["split"] == "val"
     assert report["itemknn"]["n_sessions"] == int((d.eval_targets["split"] == "val").sum())
     assert {"hit_rate", "ndcg", "mrr"} <= set(report["popularity"])
+
+
+def test_repeated_session_tracks_count_once_in_cooccurrence():
+    # Phiên [C, A, A, V]: bài cuối V không có trong train. Đồng xuất hiện với {A, C}, mỗi bài một lần:
+    # playlist chứa A: P1, P3, P4; chứa C: P1, P2, P3
+    # → E 4 (P1, P3 với cả A và C), D 3 (P1 với A và C, P2 với C), B 2, F 2 → điểm 2, 1,75, 1,5, 1,5
+    # Nếu đếm A hai lần thì D thành 4/6 → 1,67
+    ids, scores = ItemKNN().fit(KNN_SESSIONS).candidates([C, A, A, V], k=4)
+    assert ids == [E, D, B, F]
+    assert list(scores) == pytest.approx([2.0, 1.75, 1.5, 1.5])
+
+
+@pytest.mark.parametrize("model_cls", [Popularity, ItemKNN])
+def test_asking_for_more_candidates_than_train_has_is_an_error(model_cls):
+    # Train có 8 bài (A–H); loại A thì chỉ còn 7
+    with pytest.raises(ValueError, match="ứng viên"):
+        model_cls().fit(KNN_SESSIONS).candidates([A], k=8)

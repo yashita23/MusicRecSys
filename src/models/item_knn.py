@@ -10,7 +10,7 @@ tầng 1 trong (2, 3], tầng 2 trong (1, 2], tầng 3 trong (0, 1]; trong mỗi
 """
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 import numpy as np
 import pandas as pd
@@ -22,7 +22,7 @@ from src.models.popularity import Popularity
 ADJACENT_BASE, COOCCURRENCE_BASE, POPULARITY_BASE = 2.0, 1.0, 0.0
 
 
-def _ranked(indices: np.ndarray, counts: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _nonzero_by_count(indices: np.ndarray, counts: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Chỉ giữ đếm > 0, xếp theo đếm giảm dần; hòa thì theo chỉ số bài (tức theo track_id)."""
     keep = counts > 0
     indices, counts = indices[keep], counts[keep]
@@ -56,32 +56,38 @@ class ItemKNN:
         self.popularity = Popularity().fit(sessions)
         return self
 
-    def _adjacent(self, last: int) -> tuple[np.ndarray, np.ndarray]:
+    def _followers(self, last: int) -> tuple[np.ndarray, np.ndarray]:
+        """Tầng 1: những bài đứng ngay sau `last` trong train, kèm số lần."""
         row = self.adjacent.getrow(last)
-        return _ranked(row.indices, row.data)
+        return _nonzero_by_count(row.indices, row.data)
 
-    def _cooccurrence(self, session: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def _cooccurring(self, session: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Tầng 2: cộng, qua từng bài (không lặp) của phiên, số playlist train có cả bài đó lẫn ứng viên."""
         weight = np.asarray(self.playlists_of_track[session].sum(axis=0)).ravel()  # playlist → số bài của phiên nó chứa
         playlists = np.flatnonzero(weight)
         counts = self.tracks_of_playlist[playlists].T @ weight[playlists]
-        return _ranked(np.arange(len(counts)), counts)
+        return _nonzero_by_count(np.arange(len(counts)), counts)
 
     def candidates(self, session_track_ids: Sequence[str], k: int = N_CANDIDATES) -> tuple[list[str], np.ndarray]:
         session_ids = list(session_track_ids)
         codes = self.vocab.get_indexer(session_ids)
-        known = codes[codes >= 0]
+        known = np.unique(codes[codes >= 0])  # bài lặp trong phiên chỉ tính một lần
         taken = np.zeros(len(self.vocab), dtype=bool)
         taken[known] = True  # bài đã có trong phiên không bao giờ là ứng viên
 
+        tiers: list[tuple[Callable[[], tuple[np.ndarray, np.ndarray]], float]] = []
+        if len(codes) and codes[-1] >= 0:
+            tiers.append((lambda: self._followers(codes[-1]), ADJACENT_BASE))
+        if len(known):
+            tiers.append((lambda: self._cooccurring(known), COOCCURRENCE_BASE))
+
         picked: list[np.ndarray] = []
         scores: list[np.ndarray] = []
-        tiers = []
-        if len(codes) and codes[-1] >= 0:
-            tiers.append((self._adjacent(codes[-1]), ADJACENT_BASE))
-        if len(known):
-            tiers.append((self._cooccurrence(known), COOCCURRENCE_BASE))
-        for (indices, counts), base in tiers:
+        for tier, base in tiers:
             room = k - sum(len(p) for p in picked)
+            if room <= 0:
+                break  # tầng trước đã đủ k: không tính tầng sau (tầng đồng xuất hiện tốn nhất)
+            indices, counts = tier()
             fresh = ~taken[indices]
             indices, counts = indices[fresh][:room], counts[fresh][:room]
             taken[indices] = True
@@ -94,4 +100,4 @@ class ItemKNN:
             pop_ids, pop_counts = self.popularity.candidates(session_ids + ids, k=room)
             ids += pop_ids
             scores.append(_tier_scores(pop_counts, POPULARITY_BASE))
-        return ids, np.concatenate(scores) if scores else np.array([])
+        return ids, np.concatenate(scores)

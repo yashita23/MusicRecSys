@@ -1,6 +1,6 @@
 """Giao diện chung của mô hình gu và cách xuất file candidates (ticket #9, docs/data-contract.md).
 
-Mọi mô hình gu (Popularity, item-kNN, ALS, item2vec, SASRec) học từ các phiên train qua `fit`, rồi
+Hai baseline (Popularity, item-kNN liền kề) và các mô hình gu (ALS, item2vec, SASRec) học từ các phiên train qua `fit`, rồi
 `candidates(phiên, k)` trả về top-k ứng viên kèm điểm gu, **không chứa bài nào đã có trong phiên**.
 Khi đánh giá thì phiên là seed; khi sinh chuỗi tham lam (#18) thì phiên dài dần nên không lặp bài.
 """
@@ -17,6 +17,8 @@ from src.data.schema import N_CANDIDATES, validate_candidates
 
 
 class TasteModel(Protocol):
+    """Giao diện chung của baseline và mô hình gu: cái gì sinh được candidates."""
+
     name: str  # tên dùng trong file candidates/{name}_{split}_run{r}.parquet
 
     def fit(self, sessions: pd.DataFrame) -> TasteModel: ...
@@ -28,7 +30,10 @@ def top_k_excluding(ordered_ids: np.ndarray, ordered_scores: np.ndarray, exclude
     """k bài đầu của một danh sách đã xếp sẵn, bỏ các bài trong exclude."""
     head = ordered_ids[: k + len(exclude)]
     keep = ~np.isin(head, list(exclude))
-    return head[keep][:k].tolist(), ordered_scores[: len(head)][keep][:k]
+    ids, scores = head[keep][:k].tolist(), ordered_scores[: len(head)][keep][:k]
+    if len(ids) < k:
+        raise ValueError(f"chỉ có {len(ids)} ứng viên ngoài phiên, cần {k}: train quá ít bài")
+    return ids, scores
 
 
 def export_candidates(model: TasteModel, eval_targets: pd.DataFrame, split: str, k: int = N_CANDIDATES) -> pd.DataFrame:

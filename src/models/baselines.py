@@ -3,7 +3,7 @@
     python -m src.models.baselines --data <thư mục mixnext-splited hoặc data/fake> --out <thư mục ra>
 
 Ghi candidates/{popularity,itemknn}_{val,test}_run0.parquet. Hai baseline tất định nên chỉ có lần chạy 0.
-In ra JSON: tên mô hình → HitRate@10, NDCG@10, MRR trên val (mốc cho ngưỡng NDCG ở spec §6).
+In ra JSON: tên mô hình → HitRate@10, NDCG@10, MRR trên val (mốc cho ngưỡng NDCG giảm ≤ 10% ở spec §7).
 """
 from __future__ import annotations
 
@@ -19,6 +19,8 @@ from src.eval.run import Accuracy, evaluate
 from src.models.base import TasteModel, candidates_path, export_candidates
 from src.models.item_knn import ItemKNN
 from src.models.popularity import Popularity
+
+VAL = "val"  # split dùng để chọn tham số và làm mốc
 
 
 def run_baselines(data_dir: str | Path, out_dir: str | Path) -> dict[str, Accuracy]:
@@ -37,7 +39,7 @@ def run_baselines(data_dir: str | Path, out_dir: str | Path) -> dict[str, Accura
             path = candidates_path(out_dir, model.name, split)
             path.parent.mkdir(parents=True, exist_ok=True)
             df.to_parquet(path, index=False)
-        report[model.name] = evaluate(cands["val"], eval_targets)
+        report[model.name] = evaluate(cands[VAL], eval_targets)
     return report
 
 
