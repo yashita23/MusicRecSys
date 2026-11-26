@@ -25,11 +25,14 @@ GRID = {"factors": (128, 256), "regularization": (0.1, 1.0, 10.0), "decay": (0.5
 
 @dataclass(frozen=True)
 class ALSParams:
-    """Tham số chọn trên val: hai tham số của ALS và decay của vector phiên."""
+    """Tham số chọn trên val: hai tham số của ALS và decay của vector phiên.
 
-    factors: int = 64
-    regularization: float = 0.01
-    decay: float = 0.9
+    Mặc định là cấu hình đã chốt ở lưới lần 2 (notebooks/05_als.ipynb, NDCG@10 val 0,0967).
+    """
+
+    factors: int = 256
+    regularization: float = 1.0
+    decay: float = 0.5
 
 
 class ALS(EmbeddingTasteModel):

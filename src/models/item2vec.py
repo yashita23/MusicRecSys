@@ -41,12 +41,15 @@ GRID = {
 
 @dataclass(frozen=True)
 class Item2VecParams:
-    """Tham số chọn trên val: của Word2Vec (window, vector_size, epochs, ns_exponent) và cách chấm (normalize, decay)."""
+    """Tham số chọn trên val: của Word2Vec (window, vector_size, epochs, ns_exponent) và cách chấm (normalize, decay).
+
+    Mặc định là cấu hình đã chốt ở vòng 2 (notebooks/06_item2vec.ipynb, NDCG@10 val 0,0672).
+    """
 
     window: int = 3
     vector_size: int = 128
-    epochs: int = 5
-    ns_exponent: float = 0.75
+    epochs: int = 20
+    ns_exponent: float = -0.5
     normalize: bool = False
     decay: float = 0.5
 
