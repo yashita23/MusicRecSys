@@ -49,3 +49,24 @@ def export_candidates(model: TasteModel, eval_targets: pd.DataFrame, split: str,
 
 def candidates_path(root: str | Path, model_name: str, split: str, run: int = 0) -> Path:
     return Path(root) / "candidates" / f"{model_name}_{split}_run{run}.parquet"
+
+
+def save_candidates(candidates: dict[str, pd.DataFrame], root: str | Path, model_name: str, run: int = 0) -> list[Path]:
+    """Ghi {split: bảng candidates} vào <root>/candidates/{model}_{split}_run{r}.parquet."""
+    paths = []
+    for split, df in candidates.items():
+        path = candidates_path(root, model_name, split, run)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(path, index=False)
+        paths.append(path)
+    return paths
+
+
+def save_embeddings(vectors: np.ndarray, index: pd.DataFrame, root: str | Path, model_name: str) -> list[Path]:
+    """Ghi <root>/item_embeddings/{model}.npy và {model}_tracks.parquet theo docs/data-contract.md."""
+    folder = Path(root) / "item_embeddings"
+    folder.mkdir(parents=True, exist_ok=True)
+    npy, idx = folder / f"{model_name}.npy", folder / f"{model_name}_tracks.parquet"
+    np.save(npy, vectors)
+    index.to_parquet(idx, index=False)
+    return [npy, idx]

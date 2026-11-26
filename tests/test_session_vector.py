@@ -1,0 +1,58 @@
+import numpy as np
+import pandas as pd
+import pytest
+
+from src.models.popularity import Popularity
+from src.models.session import SessionVectorTaste, session_vector
+
+# Ba bài có vector 2 chiều; X không có vector (không có trong train)
+VECTORS = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]], dtype=np.float32)  # A, B, C
+A, B, C, X = 0, 1, 2, -1
+
+
+def test_weights_fall_with_distance_to_the_last_track_and_missing_tracks_keep_their_place():
+    # Phiên [A, B, X, C]: khoảng cách tới bài cuối C 0, X 1, B 2, A 3; X không đóng góp nhưng vẫn giữ chỗ
+    # decay 0,5 → C + 0,25·B + 0,125·A = (1,125, 1,25)
+    v = session_vector(VECTORS, np.array([A, B, X, C]), decay=0.5)
+    assert v == pytest.approx([1.125, 1.25])
+
+
+def test_a_repeated_track_counts_at_each_position():
+    # Phiên [A, A], decay 0,7 → 0,7·A + A = (1,7, 0)
+    assert session_vector(VECTORS, np.array([A, A]), decay=0.7) == pytest.approx([1.7, 0.0])
+
+
+def test_a_session_without_any_known_track_has_a_zero_vector():
+    assert session_vector(VECTORS, np.array([X, X]), decay=0.9).tolist() == [0.0, 0.0]
+
+
+def tid(name: str) -> str:
+    return name * 22
+
+
+T_A, T_B, T_C, T_D, T_E, T_V = (tid(c) for c in "ABCDEV")  # V không có vector
+TRACK_IDS = [T_A, T_B, T_C, T_D, T_E]
+TRACK_VECTORS = np.array([[1, 0], [0, 1], [1, 1], [2, 0], [-1, 0]], dtype=np.float32)
+# Train cho mô hình dự phòng: E 3 lượt, D 2, C 1
+TRAIN = pd.DataFrame(
+    [{"session_id": s, "split": "train", "pos": p, "track_id": t} for s, tracks in enumerate([[T_E, T_D, T_C], [T_E, T_D], [T_E]]) for p, t in enumerate(tracks)]
+)
+
+
+@pytest.fixture
+def taste():
+    return SessionVectorTaste("toy", TRACK_VECTORS, TRACK_IDS, decay=0.5, fallback=Popularity().fit(TRAIN))
+
+
+def test_candidates_rank_by_dot_product_with_the_session_vector_and_skip_session_tracks(taste):
+    # Phiên [B, A]: vector phiên = A + 0,5·B = (1; 0,5). Điểm: A 1, B 0,5 (đều trong phiên, bị loại), C 1,5, D 2, E −1
+    ids, scores = taste.candidates([T_B, T_A], k=3)
+    assert ids == [T_D, T_C, T_E]
+    assert list(scores) == pytest.approx([2.0, 1.5, -1.0])
+
+
+def test_a_session_without_known_tracks_falls_back_to_the_fallback_model(taste):
+    # V không có vector → vector phiên 0 → lấy theo Popularity: E 3 lượt, D 2
+    ids, scores = taste.candidates([T_V], k=2)
+    assert ids == [T_E, T_D]
+    assert list(scores) == [3, 2]

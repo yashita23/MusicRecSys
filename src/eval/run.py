@@ -15,6 +15,7 @@ from src.data.schema import SchemaError, validate_candidates
 from src.eval.accuracy import MISS, hit_rate, mrr, ndcg
 
 K = 10
+VAL = "val"  # split dùng để chọn tham số và làm mốc; test chỉ chấm một lần ở #26
 
 
 @dataclass(frozen=True)
