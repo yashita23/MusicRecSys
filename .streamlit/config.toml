@@ -1,0 +1,9 @@
+# Cấu hình Streamlit cho app MixNext (#11). Streamlit chỉ đọc file này khi chạy `streamlit run app/main.py`
+# từ thư mục gốc repo. Đường dẫn dữ liệu của app nằm ở app/config.toml, không phải ở đây.
+
+[browser]
+gatherUsageStats = false  # không gửi thống kê sử dụng: app chạy không cần mạng (spec §5)
+
+[server]
+headless = true  # không hỏi email ở lần chạy đầu; mở http://localhost:8501 bằng trình duyệt
+address = "localhost"  # chỉ mở trên máy này; Streamlit cũng thôi gọi mạng để dò IP ngoài (External URL)

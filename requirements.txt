@@ -1,6 +1,6 @@
 # Đã thử trên Kaggle 25/11/2026, Python 3.13.18, CPU (notebooks/00_env_check.ipynb, ticket #2).
 # implicit không có sẵn trong image Kaggle: notebook nào dùng ALS phải bật Internet và `pip install implicit==0.7.3`.
-# Gói cho app Streamlit (streamlit, plotly) chốt ở #11; app không cần torch (spec §5).
+# Gói cho app Streamlit ở app/requirements.txt (#11); app không cần torch (spec §5).
 numpy==2.1.3
 pandas==2.3.3
 pyarrow==23.0.1
