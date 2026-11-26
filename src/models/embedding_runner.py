@@ -27,7 +27,10 @@ from src.models.base import export_candidates, save_candidates, save_embeddings
 from src.models.popularity import Popularity
 from src.models.session import SessionVectorTaste
 
-DECAY = "decay"  # tham số của vector phiên, có ở mọi lớp Params; không cần học lại khi đổi
+DECAY = "decay"  # tham số của vector phiên, có ở mọi lớp Params
+# Tham số chỉ đổi cách chấm điểm (SessionVectorTaste.with_scoring), không cần học lại; quét ở vòng trong của lưới.
+# "normalize" là tùy chọn: lớp Params nào có trường này mới dùng.
+SCORING = ("normalize", DECAY)
 
 
 class EmbeddingTasteModel:
@@ -35,7 +38,7 @@ class EmbeddingTasteModel:
 
     Lớp con đặt `name` và cài `_learn(train) -> (vectors, track_ids)`. track_ids phải đã sắp xếp,
     vì khi hòa điểm SessionVectorTaste xếp theo thứ tự này (để hòa thì theo track_id).
-    `params` là một dataclass đóng băng có trường `decay`.
+    `params` là một dataclass đóng băng có trường `decay` (và có thể có `normalize`).
     """
 
     name: str
@@ -52,18 +55,25 @@ class EmbeddingTasteModel:
         if train.empty:
             raise ValueError(f"không có phiên train nào để học {self.name}")
         vectors, track_ids = self._learn(train)
-        self.taste = SessionVectorTaste(self.name, vectors, track_ids, self._init_params.decay, Popularity().fit(sessions))
+        p = self._init_params
+        self.taste = SessionVectorTaste(
+            self.name, vectors, track_ids, p.decay, Popularity().fit(sessions), normalize=getattr(p, "normalize", False)
+        )
         return self
+
+    def _scoring_fields(self) -> list[str]:
+        names = {field.name for field in dataclasses.fields(self._init_params)}
+        return [key for key in SCORING if key in names]
 
     @property
     def params(self) -> Any:
-        """decay lấy từ vector phiên đang dùng (with_decay chỉ đổi ở đó)."""
-        return dataclasses.replace(self._init_params, decay=self.taste.decay)
+        """Tham số cách chấm lấy từ vector phiên đang dùng (with_scoring chỉ đổi ở đó)."""
+        return dataclasses.replace(self._init_params, **{key: getattr(self.taste, key) for key in self._scoring_fields()})
 
-    def with_decay(self, decay: float) -> EmbeddingTasteModel:
-        """Cùng vector bài đã học, decay khác (chọn decay trên val không cần học lại)."""
+    def with_scoring(self, **scoring: Any) -> EmbeddingTasteModel:
+        """Cùng vector bài đã học, đổi decay hoặc chuẩn hóa (chọn trên val không cần học lại)."""
         clone = copy.copy(self)
-        clone.taste = self.taste.with_decay(decay)
+        clone.taste = self.taste.with_scoring(**scoring)
         return clone
 
     def candidates(self, session_track_ids: Sequence[str], k: int = N_CANDIDATES) -> tuple[list[str], np.ndarray]:
@@ -95,16 +105,18 @@ class EmbeddingSpec:
 def tune(spec: EmbeddingSpec, sessions: pd.DataFrame, eval_targets: pd.DataFrame, random_seed: int = 0) -> tuple[EmbeddingTasteModel, pd.DataFrame, list[dict]]:
     """Chọn tham số có NDCG@10 cao nhất trên val; hòa thì lấy cấu hình đứng trước trong lưới.
 
+    Mỗi bộ tham số học chỉ học một lần; các tham số cách chấm (SCORING) quét trên cùng mô hình đã học.
     Trả về mô hình đã chọn, candidates val của nó (để khỏi tính lại) và cả lưới.
     """
-    learned = [key for key in spec.grid if key != DECAY]
+    learned = [key for key in spec.grid if key not in SCORING]
+    scoring = [key for key in SCORING if key in spec.grid]
     rows: list[dict] = []
     best: tuple[EmbeddingTasteModel, pd.DataFrame] | None = None
     best_ndcg = -1.0
     for values in product(*(spec.grid[key] for key in learned)):
         fitted = spec.build(spec.params_cls(**dict(zip(learned, values))), random_seed=random_seed).fit(sessions)
-        for decay in spec.grid[DECAY]:
-            model = fitted.with_decay(decay)
+        for scoring_values in product(*(spec.grid[key] for key in scoring)):
+            model = fitted.with_scoring(**dict(zip(scoring, scoring_values)))
             val_cands = export_candidates(model, eval_targets, VAL)
             acc = evaluate(val_cands, eval_targets)
             rows.append({**asdict(model.params), "hit_rate": acc.hit_rate, "ndcg": acc.ndcg, "mrr": acc.mrr})

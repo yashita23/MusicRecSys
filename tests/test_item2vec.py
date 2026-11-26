@@ -15,8 +15,8 @@ from tests.toy_sessions import JAZZ, ROCK, two_clusters  # noqa: E402
 @pytest.fixture(scope="module")
 def item2vec():
     # Dữ liệu đồ chơi chỉ khoảng 2.400 bài mỗi epoch: 5 epoch chưa tách được hai cụm, 50 epoch thì rõ
-    params = Item2VecParams(window=5, vector_size=8, decay=0.9)
-    return Item2Vec(params, random_seed=0, workers=1, epochs=50).fit(two_clusters(n_per_cluster=200))
+    params = Item2VecParams(window=5, vector_size=8, epochs=50, decay=0.9)
+    return Item2Vec(params, random_seed=0, workers=1).fit(two_clusters(n_per_cluster=200))
 
 
 def test_a_rock_session_gets_rock_candidates_first(item2vec):
@@ -45,8 +45,9 @@ def test_cli_tunes_window_size_and_decay_on_val_then_writes_files(tmp_path, caps
 
     chosen = json.loads((out / "item2vec_params.json").read_text(encoding="utf-8"))
     grid = chosen["grid"]
-    assert len(grid) == 16  # window {3, 10} × vector_size {128, 256} × decay {0,5; 0,7; 0,9; 1,0}
+    assert len(grid) == 32  # epochs {5, 20} × ns_exponent {0,75; −0,5} × normalize {không, có} × decay {0,5; 0,7; 0,9; 1,0}
     best = max(grid, key=lambda row: row["ndcg"])
-    assert chosen["params"] == {key: best[key] for key in ("window", "vector_size", "decay")}
+    keys = ("window", "vector_size", "epochs", "ns_exponent", "normalize", "decay")
+    assert chosen["params"] == {key: best[key] for key in keys}
     assert vectors.shape[1] == chosen["params"]["vector_size"]
     assert json.loads(capsys.readouterr().out)["params"] == chosen["params"]

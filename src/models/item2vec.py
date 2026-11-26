@@ -9,6 +9,11 @@ Chọn tham số và CLI ở src/models/embedding_runner.py.
 
 Học nhiều luồng (workers = số CPU) cho nhanh, nên cùng random_seed không ra cùng vector từng bit
 (gensim chỉ tái lập được với workers=1 và PYTHONHASHSEED cố định).
+
+Vòng 1 trên Kaggle (window {3, 10} × vector_size {128, 256}, tham số mặc định của gensim): NDCG@10 val chỉ 0,020–0,028,
+window và vector_size gần như không ảnh hưởng. Vòng 2 giữ (3, 128) và thử epochs, ns_exponent
+(Caselles-Dupré và cộng sự 2018: với dữ liệu nghe nhạc, hai tham số này quan trọng) và chuẩn hóa vector bài
+(normalize, xem SessionVectorTaste). Bảng hai vòng ở notebooks/06_item2vec.ipynb.
 """
 from __future__ import annotations
 
@@ -24,26 +29,34 @@ from src.models.embedding_runner import EmbeddingSpec, EmbeddingTasteModel
 
 SKIP_GRAM = 1  # skip-gram như bài item2vec gốc
 NEGATIVE = 5   # số mẫu âm mỗi cặp (mặc định của gensim)
-EPOCHS = 5    # mặc định của gensim; dữ liệu thật khoảng 5 triệu lượt bài mỗi epoch
-GRID = {"window": (3, 10), "vector_size": (128, 256), "decay": (0.5, 0.7, 0.9, 1.0)}
+GRID = {
+    "window": (3,),
+    "vector_size": (128,),
+    "epochs": (5, 20),
+    "ns_exponent": (0.75, -0.5),  # 0,75 là mặc định của gensim; âm thì lấy mẫu âm nghiêng về bài ít phổ biến
+    "normalize": (False, True),
+    "decay": (0.5, 0.7, 0.9, 1.0),
+}
 
 
 @dataclass(frozen=True)
 class Item2VecParams:
-    """Tham số chọn trên val: cửa sổ ngữ cảnh, số chiều, và decay của vector phiên."""
+    """Tham số chọn trên val: của Word2Vec (window, vector_size, epochs, ns_exponent) và cách chấm (normalize, decay)."""
 
-    window: int = 5
+    window: int = 3
     vector_size: int = 128
-    decay: float = 0.9
+    epochs: int = 5
+    ns_exponent: float = 0.75
+    normalize: bool = False
+    decay: float = 0.5
 
 
 class Item2Vec(EmbeddingTasteModel):
     name = "item2vec"
 
-    def __init__(self, params: Item2VecParams = Item2VecParams(), random_seed: int = 0, workers: int | None = None, epochs: int = EPOCHS):
+    def __init__(self, params: Item2VecParams = Item2VecParams(), random_seed: int = 0, workers: int | None = None):
         super().__init__(params, random_seed)
         self.workers = workers if workers is not None else os.cpu_count() or 1  # None: mọi CPU
-        self.epochs = epochs
 
     def _learn(self, train: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
         from gensim.models import Word2Vec  # nhập muộn: app và các mô hình khác không cần gensim
@@ -57,7 +70,8 @@ class Item2Vec(EmbeddingTasteModel):
             sg=SKIP_GRAM,
             negative=NEGATIVE,
             min_count=1,  # mọi bài train đều có vector
-            epochs=self.epochs,
+            epochs=p.epochs,
+            ns_exponent=p.ns_exponent,
             seed=self.random_seed,
             workers=self.workers,
         )

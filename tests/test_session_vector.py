@@ -56,3 +56,14 @@ def test_a_session_without_known_tracks_falls_back_to_the_fallback_model(taste):
     ids, scores = taste.candidates([T_V], k=2)
     assert ids == [T_E, T_D]
     assert list(scores) == [3, 2]
+
+
+def test_normalized_vectors_rank_by_cosine_and_are_what_gets_exported():
+    # Chuẩn hóa: A (1, 0), B (0, 1), C (0,707; 0,707), D (1, 0), E (−1, 0). Phiên [B, A], decay 0,5 → vector phiên (1; 0,5)
+    # Điểm: C 0,707 + 0,354 = 1,061, D 1, E −1. Không chuẩn hóa thì D (2) đứng trước C (1,5)
+    taste = SessionVectorTaste("toy", TRACK_VECTORS, TRACK_IDS, decay=0.5, fallback=Popularity().fit(TRAIN), normalize=True)
+    ids, scores = taste.candidates([T_B, T_A], k=3)
+    assert ids == [T_C, T_D, T_E]
+    assert list(scores) == pytest.approx([1.0607, 1.0, -1.0], abs=1e-4)
+    vectors, _ = taste.embeddings()
+    assert np.linalg.norm(vectors, axis=1) == pytest.approx(np.ones(5))

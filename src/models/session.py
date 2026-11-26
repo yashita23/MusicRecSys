@@ -30,24 +30,40 @@ def session_vector(vectors: np.ndarray, rows: np.ndarray, decay: float) -> np.nd
     return weights @ vectors[rows[known]].astype(float)
 
 
+def _unit_rows(vectors: np.ndarray) -> np.ndarray:
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    return (vectors / np.maximum(norms, np.finfo(vectors.dtype).tiny)).astype(vectors.dtype)
+
+
 class SessionVectorTaste:
     """Mô hình gu từ embedding bài: top-k theo tích vô hướng với vector phiên, không có bài đã trong phiên.
 
     Phiên không có bài nào có vector (vector phiên bằng 0) thì lấy ứng viên từ mô hình dự phòng (Popularity).
+    normalize=True: chuẩn hóa mọi vector bài về độ dài 1 trước khi tính (điểm gu thành tổng có trọng số của cosine),
+    để độ dài vector (thường đi theo tần suất bài) không lấn át hướng. Vector xuất ra là vector đã chuẩn hóa,
+    nên app vẫn chỉ cần tích vô hướng.
     """
 
-    def __init__(self, name: str, vectors: np.ndarray, track_ids: Sequence[str], decay: float, fallback: TasteModel):
+    def __init__(
+        self, name: str, vectors: np.ndarray, track_ids: Sequence[str], decay: float, fallback: TasteModel, normalize: bool = False
+    ):
         self.name = name
-        self.vectors = np.asarray(vectors, dtype=np.float32)
+        self._learned = np.asarray(vectors, dtype=np.float32)
         # phần tử là str thường, không phải np.str_. Hòa điểm thì xếp theo thứ tự này: truyền track_ids đã sắp xếp
         self.index = pd.Index(np.asarray(track_ids, dtype=object))
         self.decay = decay
         self.fallback = fallback
+        self.normalize = normalize
+        self.vectors = _unit_rows(self._learned) if normalize else self._learned
 
-    def with_decay(self, decay: float) -> SessionVectorTaste:
-        """Cùng vector bài, decay khác; không học lại (chọn decay trên val)."""
-        clone = copy.copy(self)  # bản sao nông: dùng chung mảng vector
-        clone.decay = decay
+    def with_scoring(self, decay: float | None = None, normalize: bool | None = None) -> SessionVectorTaste:
+        """Cùng vector đã học, đổi cách chấm (decay, chuẩn hóa); không học lại (chọn trên val)."""
+        clone = copy.copy(self)  # bản sao nông: dùng chung mảng vector đã học
+        if decay is not None:
+            clone.decay = decay
+        if normalize is not None and normalize != self.normalize:
+            clone.normalize = normalize
+            clone.vectors = _unit_rows(self._learned) if normalize else self._learned
         return clone
 
     def candidates(self, session_track_ids: Sequence[str], k: int = N_CANDIDATES) -> tuple[list[str], np.ndarray]:
