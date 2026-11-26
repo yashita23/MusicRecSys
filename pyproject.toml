@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mixnext"
+version = "0.1.0"
+description = "MixNext: gợi ý bài tiếp theo vừa hợp gu vừa chuyển bài mượt (transition-aware playlist continuation)"
+requires-python = ">=3.10"
+# Gói phụ thuộc cài riêng từ requirements.txt (đã chốt trên Kaggle, #2). Không khai ở đây để
+# `pip install -e .` không cài lại torch và các gói lớn có sẵn trên Kaggle; app sẽ có danh sách gói riêng (#11).
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["src", "src.*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
