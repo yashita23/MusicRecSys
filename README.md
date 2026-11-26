@@ -21,7 +21,7 @@ data/            # dữ liệu ở máy (raw, processed), không commit
 
 ## Cài đặt
 
-Python 3.10+.
+Python 3.10+ cho phần huấn luyện và test; riêng app cần Python 3.11+ (đọc config bằng `tomllib`).
 
 ```bash
 pip install -r requirements.txt   # gói đã chốt trên Kaggle (#2)
@@ -37,10 +37,10 @@ App Streamlit chạy trên laptop, không cần mạng, cần Python 3.11+ và k
 ```bash
 pip install -r app/requirements.txt
 python -m src.data.fake --out data/fake   # một lần, ở thư mục gốc repo
-streamlit run app/main.py
+streamlit run app/main.py                 # ở thư mục gốc repo, rồi mở http://localhost:8501
 ```
 
-Mọi đường dẫn dữ liệu app đọc nằm trong `app/config.toml` (đường dẫn tương đối tính theo thư mục `app/`). Muốn dùng file config khác thì đặt biến môi trường `MIXNEXT_CONFIG`.
+Mọi đường dẫn dữ liệu app đọc nằm trong `app/config.toml` (đường dẫn tương đối tính theo thư mục `app/`). Muốn dùng file config khác thì đặt biến môi trường `MIXNEXT_CONFIG`. Chạy từ thư mục gốc repo để Streamlit đọc `.streamlit/config.toml` (tắt thống kê sử dụng, không hỏi email): app không cần mạng.
 
 ## Chạy lại pipeline trên Kaggle
 

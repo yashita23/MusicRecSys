@@ -8,6 +8,7 @@ pytest.importorskip("tomllib", reason="app cần Python 3.11+ (đọc config b�
 from app.config import load_config  # noqa: E402
 from app.player import Player  # noqa: E402
 from src.data.fake import make_fake_dataset, write_fake  # noqa: E402
+from src.data.schema import SchemaError  # noqa: E402
 
 
 def tid(name: str) -> str:
@@ -43,6 +44,7 @@ def player():
 
 def test_now_playing_is_the_last_seed_track(player):
     assert player.playlists == [7]
+    assert player.split == "test"
     assert player.now_playing(7)["track_id"] == SEED[-1]
 
 
@@ -59,6 +61,23 @@ def test_queue_rows_carry_what_the_player_shows(player):
         assert column in row.index
 
 
+def test_candidates_of_a_session_missing_from_eval_targets_are_rejected():
+    with pytest.raises(SchemaError, match="eval_targets"):
+        Player(TRACKS, EVAL_TARGETS, CANDIDATES.assign(session_id=8))
+
+
+def test_candidates_or_seeds_with_unknown_tracks_are_rejected():
+    with pytest.raises(SchemaError, match="tracks"):
+        Player(TRACKS[TRACKS["track_id"] != R], EVAL_TARGETS, CANDIDATES)
+
+
+def data_config(tracks: str, eval_targets: str, candidates: str) -> str:
+    return f"[data]\ntracks = '{tracks}'\neval_targets = '{eval_targets}'\ncandidates = '{candidates}'\n"
+
+
+FAKE_PATHS = ("../data/fake/tracks.parquet", "../data/fake/eval_targets.parquet", "../data/fake/candidates/fake_test_run0.parquet")
+
+
 def write_config(path: Path, body: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(body, encoding="utf-8")
@@ -66,20 +85,13 @@ def write_config(path: Path, body: str) -> Path:
 
 
 def test_relative_data_paths_resolve_against_the_config_folder_not_the_working_directory(tmp_path, monkeypatch):
-    cfg_path = write_config(
-        tmp_path / "app" / "config.toml",
-        """
-[data]
-tracks = "../data/fake/tracks.parquet"
-eval_targets = "../data/fake/eval_targets.parquet"
-candidates = "/abs/candidates/fake_test_run0.parquet"
-""",
-    )
+    absolute = (tmp_path / "elsewhere" / "fake_test_run0.parquet").resolve()
+    cfg_path = write_config(tmp_path / "app" / "config.toml", data_config(*FAKE_PATHS[:2], absolute.as_posix()))
     monkeypatch.chdir(tmp_path / "app")
     cfg = load_config(cfg_path)
     assert cfg.tracks == (tmp_path / "data" / "fake" / "tracks.parquet").resolve()
     assert cfg.eval_targets == (tmp_path / "data" / "fake" / "eval_targets.parquet").resolve()
-    assert cfg.candidates == Path("/abs/candidates/fake_test_run0.parquet").resolve()
+    assert cfg.candidates == absolute
 
 
 def test_a_missing_data_path_names_the_key_and_the_config_file(tmp_path):
@@ -96,15 +108,7 @@ APP = Path(__file__).resolve().parents[1] / "app" / "main.py"
 def fake_config(tmp_path, monkeypatch):
     """Dữ liệu giả ghi ra thư mục tạm, cùng một config trỏ tới nó; app đọc config qua MIXNEXT_CONFIG."""
     write_fake(make_fake_dataset(n_sessions=120, n_tracks=400, random_seed=3), tmp_path / "data" / "fake")
-    cfg_path = write_config(
-        tmp_path / "app" / "config.toml",
-        """
-[data]
-tracks = "../data/fake/tracks.parquet"
-eval_targets = "../data/fake/eval_targets.parquet"
-candidates = "../data/fake/candidates/fake_test_run0.parquet"
-""",
-    )
+    cfg_path = write_config(tmp_path / "app" / "config.toml", data_config(*FAKE_PATHS))
     monkeypatch.setenv("MIXNEXT_CONFIG", str(cfg_path))
     return cfg_path
 
@@ -127,3 +131,21 @@ def test_app_without_data_explains_how_to_create_it(fake_config, tmp_path):
     at = streamlit_testing.AppTest.from_file(str(APP), default_timeout=30).run()
     assert not at.exception
     assert "python -m src.data.fake" in at.error[0].value
+
+
+def test_app_picks_up_regenerated_data_without_a_restart(fake_config, tmp_path):
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+    at = streamlit_testing.AppTest.from_file(str(APP), default_timeout=30).run()
+    before = at.selectbox[0].options
+    write_fake(make_fake_dataset(n_sessions=200, n_tracks=400, random_seed=4), tmp_path / "data" / "fake")
+    at.run()
+    assert not at.exception
+    assert at.selectbox[0].options != before
+
+
+def test_app_with_a_broken_config_shows_an_error_instead_of_a_traceback(tmp_path, monkeypatch):
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+    monkeypatch.setenv("MIXNEXT_CONFIG", str(tmp_path / "missing.toml"))
+    at = streamlit_testing.AppTest.from_file(str(APP), default_timeout=30).run()
+    assert not at.exception
+    assert "missing.toml" in at.error[0].value

@@ -2,11 +2,10 @@
 from __future__ import annotations
 
 import tomllib
-from dataclasses import dataclass
+from dataclasses import astuple, dataclass, fields
 from pathlib import Path
 
 DEFAULT_CONFIG = Path(__file__).with_name("config.toml")
-DATA_KEYS = ("tracks", "eval_targets", "candidates")
 
 
 @dataclass(frozen=True)
@@ -17,15 +16,21 @@ class AppConfig:
     eval_targets: Path
     candidates: Path
 
+    @property
+    def files(self) -> tuple[Path, ...]:
+        return astuple(self)
+
     def missing_files(self) -> list[Path]:
-        return [p for p in (self.tracks, self.eval_targets, self.candidates) if not p.is_file()]
+        return [p for p in self.files if not p.is_file()]
 
 
 def load_config(path: str | Path = DEFAULT_CONFIG) -> AppConfig:
+    """Lỗi FileNotFoundError nếu không có file config, ValueError nếu TOML sai hoặc thiếu đường dẫn."""
     path = Path(path)
     with path.open("rb") as f:
         data = tomllib.load(f).get("data", {})
-    missing = [key for key in DATA_KEYS if key not in data]
+    keys = [field.name for field in fields(AppConfig)]
+    missing = [key for key in keys if key not in data]
     if missing:
         raise ValueError(f"{path}: mục [data] thiếu đường dẫn {', '.join(missing)}")
-    return AppConfig(**{key: (path.parent / data[key]).resolve() for key in DATA_KEYS})
+    return AppConfig(**{key: (path.parent / data[key]).resolve() for key in keys})
