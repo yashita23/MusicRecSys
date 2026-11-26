@@ -221,3 +221,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# MixNext (#3): dữ liệu và artifacts lấy từ Kaggle Dataset, không commit.
+# Dấu / ở đầu: chỉ thư mục ở gốc repo, để không bỏ qua src/data/.
+/data/
+/artifacts/*
+!/artifacts/README.md
