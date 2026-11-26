@@ -97,6 +97,15 @@ def test_a_seed_of_unknown_tracks_falls_back_to_popularity(sasrec):
     assert ids == expected[0] and list(scores) == list(expected[1])
 
 
+def test_scoring_many_sessions_at_once_matches_one_at_a_time_including_fallback(sasrec):
+    sessions = [CYCLE[3:6], [V], CYCLE[:5], [V, CYCLE[8]]]  # phiên thứ hai chỉ có bài lạ → Popularity
+    batched = sasrec.candidates_batch(sessions, k=4)
+    for session, (ids, scores) in zip(sessions, batched):
+        one_ids, one_scores = sasrec.candidates(session, k=4)
+        assert ids == one_ids
+        assert list(scores) == pytest.approx(list(one_scores), rel=1e-5)
+
+
 def test_cli_trains_with_early_stopping_on_val_then_writes_candidates_and_a_reloadable_checkpoint(tmp_path, capsys):
     data = make_fake_dataset(n_sessions=150, n_tracks=400, random_seed=5)
     write_fake(data, tmp_path / "data")

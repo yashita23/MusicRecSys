@@ -23,6 +23,7 @@ from src.models.sasrec.model import SASRec, SASRecParams
 
 
 def run(data_dir: str | Path, out_dir: str | Path, run_number: int = 0, params: SASRecParams = SASRecParams()) -> dict:
+    """Lần chạy run_number (cũng là random_seed): huấn luyện, xuất candidates val/test, checkpoint và báo cáo JSON."""
     data = Path(data_dir)
     tracks = pd.read_parquet(data / "tracks.parquet")
     sessions = pd.read_parquet(data / "sessions.parquet")

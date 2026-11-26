@@ -3,6 +3,9 @@
 Huấn luyện bằng cross-entropy với mẫu âm dùng chung trong batch (Klenitskiy & Vasilev, RecSys 2023), không phải
 BCE 1 mẫu âm như bản gốc. Mỗi epoch mỗi playlist cho một đoạn liên tiếp ngẫu nhiên (data.training_windows).
 Có eval_targets thì sau mỗi epoch đo NDCG@10 trên một mẫu phiên val, giữ trạng thái tốt nhất và dừng sớm.
+
+Cùng random_seed chưa chắc ra cùng mô hình: giới hạn thời gian làm điểm dừng phụ thuộc tốc độ máy, và một số
+phép tính trên GPU không tất định (NOTICE.md, mục Tái lập).
 """
 from __future__ import annotations
 
@@ -18,7 +21,7 @@ import torch
 
 from src.data.schema import N_CANDIDATES
 from src.eval.run import VAL, evaluate
-from src.models.base import export_candidates, top_k_by_score
+from src.models.base import export_candidates
 from src.models.popularity import Popularity
 from src.models.sasrec.data import PAD, train_sequences, training_windows
 from src.models.sasrec.network import SASRecNetwork
@@ -26,6 +29,8 @@ from src.models.sasrec.network import SASRecNetwork
 
 @dataclass(frozen=True)
 class SASRecParams:
+    """Tham số cố định của #16 (không chọn trên lưới): kiến trúc, tối ưu, và điều kiện dừng sớm."""
+
     hidden: int = 128
     blocks: int = 2
     heads: int = 2
@@ -41,6 +46,11 @@ class SASRecParams:
 
 
 class SASRec:
+    """Mô hình gu tuần tự: fit(sessions, eval_targets) học trên phiên train; candidates/candidates_batch cho top-k.
+
+    Giao diện như TasteModel (src/models/base.py), thêm eval_targets để dừng sớm, save/load checkpoint.
+    """
+
     name = "sasrec"
 
     def __init__(self, params: SASRecParams = SASRecParams(), random_seed: int = 0, device: str | None = None):
@@ -118,18 +128,46 @@ class SASRec:
         return float(np.mean(losses))
 
     def candidates(self, session_track_ids: Sequence[str], k: int = N_CANDIDATES) -> tuple[list[str], np.ndarray]:
-        """Đặc trưng ở vị trí cuối của phiên (bỏ bài không có trong train) · embedding mọi bài; không có bài nào thì Popularity."""
-        session = list(session_track_ids)
-        codes = self.index.get_indexer(session)
-        known = codes[codes >= 0][-self.params.maxlen :] + 1
-        if len(known) == 0:
-            return self.popularity.candidates(session, k=k)
-        seq = np.full((1, self.params.maxlen), PAD, dtype=np.int64)
-        seq[0, -len(known) :] = known
-        with torch.no_grad():
-            last = self.network(torch.as_tensor(seq, device=self.device))[0, -1]
-            scores = (self.network.item_emb.weight[1:] @ last).float().cpu().numpy()
-        return top_k_by_score(self.index.to_numpy(), scores, session, k)
+        return self.candidates_batch([session_track_ids], k)[0]
+
+    def candidates_batch(self, sessions: Sequence[Sequence[str]], k: int = N_CANDIDATES) -> list[tuple[list[str], np.ndarray]]:
+        """Top-k của nhiều phiên trong một lượt chạy mạng; export_candidates dùng hàm này khi có.
+
+        Điểm gu = đặc trưng ở vị trí cuối của phiên (bỏ bài không có trong train, đệm trái đến maxlen) · embedding bài.
+        Bài đã có trong phiên bị che trước khi lấy top-k trên thiết bị (GPU nếu có). Phiên không còn bài nào → Popularity.
+        """
+        p = self.params
+        sessions = [list(s) for s in sessions]
+        results: list[tuple[list[str], np.ndarray] | None] = [None] * len(sessions)
+        rows, seqs, excluded = [], [], []
+        for i, session in enumerate(sessions):
+            codes = self.index.get_indexer(session)
+            known = codes[codes >= 0] + 1
+            if len(known) == 0:
+                results[i] = self.popularity.candidates(session, k=k)
+                continue
+            seq = np.full(p.maxlen, PAD, dtype=np.int64)
+            tail = known[-p.maxlen :]
+            seq[-len(tail) :] = tail
+            rows.append(i)
+            seqs.append(seq)
+            excluded.append(np.unique(known) - 1)  # cột trong bảng điểm (bài mã c ở cột c - 1)
+        if rows:
+            n_items = len(self.index)
+            short = [len(e) for e in excluded if n_items - len(e) < k]
+            if short:
+                raise ValueError(f"chỉ có {n_items - max(short)} ứng viên ngoài phiên, cần {k}: train quá ít bài")
+            with torch.no_grad():
+                last = self.network(torch.as_tensor(np.stack(seqs), device=self.device))[:, -1]  # (B, hidden)
+                scores = last @ self.network.item_emb.weight[1:].T  # (B, số bài)
+                row_idx = torch.as_tensor(np.repeat(np.arange(len(rows)), [len(e) for e in excluded]), device=self.device)
+                col_idx = torch.as_tensor(np.concatenate(excluded), device=self.device)
+                scores[row_idx, col_idx] = float("-inf")
+                top_scores, top_cols = torch.topk(scores, k, dim=1)
+            track_ids = self.index.to_numpy()
+            for row, cols, vals in zip(rows, top_cols.cpu().numpy(), top_scores.float().cpu().numpy()):
+                results[row] = (track_ids[cols].tolist(), vals)
+        return [r for r in results if r is not None]
 
     def save(self, path: str | Path) -> Path:
         """Checkpoint: trọng số, tham số, danh mục bài (mã = vị trí + 1) và lịch sử huấn luyện."""

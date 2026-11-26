@@ -12,10 +12,12 @@ Phần mạng (`network.py`) chuyển từ **SASRec.pytorch** của Zan Huang (p
 - **Điểm của một bài:** tích vô hướng giữa đặc trưng ở vị trí cuối và embedding của bài.
 
 ## Thay đổi (MixNext, ticket #16)
-- **Đầu vào và mã bài** (`network.py`):
-  - Nhận tensor thay vì mảng numpy.
-  - Bỏ `user_ids` và bỏ tùy chọn `norm_first`.
-  - Bỏ `predict`; điểm tính ở `model.py`.
+- **Mạng** (`network.py`):
+  - Lớp `SASRec` đổi tên thành `SASRecNetwork`, nhận tham số tường minh (`item_num, maxlen, hidden_units, num_blocks, num_heads, dropout_rate`) thay cho đối tượng `args`; bỏ `user_num`.
+  - `log2feats` thành `forward`, nhận tensor thay vì mảng numpy.
+  - Bỏ `forward(user_ids, log_seqs, pos_seqs, neg_seqs)` dùng khi huấn luyện (hàm mất mát viết lại ở `model.py`) và `predict` (điểm tính ở `model.py`).
+  - Bỏ tùy chọn `norm_first`; chỉ giữ nhánh mặc định post-norm.
+- **Bỏ số hạng `l2_emb`** của hàm mất mát: bản gốc mặc định bằng 0, tức không dùng.
 - **Hàm mất mát:** cross-entropy trên (bài đúng + 256 bài âm ngẫu nhiên dùng chung cho cả batch) thay cho BCE với 1 bài âm mỗi vị trí. Theo Klenitskiy & Vasilev, *Turning Dross Into Gold Loss: is BERT4Rec really better than SASRec?*, RecSys 2023. Bài âm trùng bài đúng bị loại khỏi softmax.
 - **Lấy mẫu huấn luyện** (`data.py`, viết lại thay `utils.WarpSampler`):
   - Mỗi epoch mỗi playlist cho một đoạn liên tiếp ngẫu nhiên dài tối đa `maxlen + 1`, thay vì `maxlen` bài cuối.
@@ -26,3 +28,7 @@ Phần mạng (`network.py`) chuyển từ **SASRec.pytorch** của Zan Huang (p
   - Seed không còn bài nào thì lấy ứng viên theo Popularity, giống các mô hình gu khác.
   - Ứng viên không chứa bài đã có trong phiên.
 - **Tham số:** hidden 128, 2 khối, 2 head, batch 256 (`SASRecParams`).
+- **Chấm nhiều phiên một lượt** (`SASRec.candidates_batch`): che bài trong phiên rồi lấy top-k trên GPU.
+
+## Tái lập
+Cùng `random_seed` chưa chắc ra cùng mô hình: giới hạn thời gian huấn luyện (40 phút) làm điểm dừng phụ thuộc tốc độ máy, và một số phép tính trên GPU (attention, lan truyền ngược của embedding) không tất định. Khác biệt giữa các lần chạy đo ở #26 (3 lần chạy).
