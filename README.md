@@ -8,7 +8,7 @@ Gợi ý bài hát tiếp theo vừa hợp gu người nghe vừa chuyển mư�
 src/
 ├── data/        # ghép, lọc, chia train/val/test; schema và dữ liệu giả
 ├── features/    # BPM, Camelot, energy
-├── models/      # baseline (popularity, item_knn), mô hình gu (als), vector phiên (session)
+├── models/      # baseline (popularity, item_knn), mô hình gu (als, item2vec), vector phiên (session), embedding_runner (chọn tham số, CLI)
 ├── rerank/      # điểm mix (mix_rule), xếp lại theo α (combine)
 └── eval/        # độ chính xác (accuracy, run), độ mượt (smoothness)
 notebooks/       # chạy trên Kaggle: clone repo rồi gọi hàm trong src/; template.ipynb là notebook mẫu
@@ -54,10 +54,11 @@ Mỗi notebook clone repo từ GitHub và gọi hàm trong `src/`. Từ notebook
 | `03_split` | #6, #7 | `mixnext-processed` | Dataset `titeohihi/mixnext-splited`: `tracks.parquet`, `sessions.parquet`, `eval_targets.parquet`, `split_report.json` |
 | `04_baselines` | #9 | `titeohihi/mixnext-splited` | Dataset `mixnext-candidates`: candidates của Popularity và item-kNN liền kề |
 | `05_als` | #14 | `titeohihi/mixnext-splited` | Dataset `mixnext-embeddings`: `item_embeddings/als.npy` + `als_tracks.parquet`, `candidates/als_{val,test}_run0.parquet`, `als_params.json` (tham số chọn trên val) |
+| `06_item2vec` | #15 | `titeohihi/mixnext-splited` | Dataset `mixnext-item2vec`: `item_embeddings/item2vec.npy` + `item2vec_tracks.parquet`, `candidates/item2vec_{val,test}_run0.parquet`, `item2vec_params.json` |
 
 Bật Internet ở mọi notebook (để clone repo và `pip install`). Chỉ cần CPU.
 
-Dataset tạo từ output của một notebook chỉ nhận version mới từ chính notebook đó. Vì vậy candidates của các mô hình gu có embedding (ALS, item2vec) nằm cùng embedding trong `mixnext-embeddings`, không ở `mixnext-candidates`. Notebook nào cần candidates thì Add Input cả hai bộ và tìm file theo tên bằng `Path("/kaggle/input").rglob(...)`.
+Dataset tạo từ output của một notebook chỉ nhận version mới từ chính notebook đó. Vì vậy mỗi notebook mô hình gu có một Dataset riêng, chứa cả candidates lẫn embedding của mô hình đó: `mixnext-embeddings` (ALS, notebook 05), `mixnext-item2vec` (notebook 06). Notebook nào cần candidates hay embedding thì Add Input các bộ cần dùng và tìm file theo tên bằng `Path("/kaggle/input").rglob(...)`; trong các bộ này file có tiền tố `out/`.
 
 ## Môi trường
 
