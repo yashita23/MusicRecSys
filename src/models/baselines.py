@@ -16,7 +16,7 @@ import pandas as pd
 
 from src.data.schema import EVAL_SPLITS, validate_dataset
 from src.eval.run import Accuracy, evaluate
-from src.models.base import TasteModel, candidates_path, export_candidates
+from src.models.base import TasteModel, export_candidates, save_candidates
 from src.models.item_knn import ItemKNN
 from src.models.popularity import Popularity
 
@@ -35,10 +35,7 @@ def run_baselines(data_dir: str | Path, out_dir: str | Path) -> dict[str, Accura
         model.fit(sessions)
         cands = {split: export_candidates(model, eval_targets, split) for split in EVAL_SPLITS}
         validate_dataset(tracks, sessions, eval_targets, candidates=cands)
-        for split, df in cands.items():
-            path = candidates_path(out_dir, model.name, split)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            df.to_parquet(path, index=False)
+        save_candidates(cands, out_dir, model.name)
         report[model.name] = evaluate(cands[VAL], eval_targets)
     return report
 
