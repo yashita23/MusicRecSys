@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 from src.data.schema import N_CANDIDATES
-from src.models.base import TasteModel, top_k_excluding
+from src.models.base import TasteModel, top_k_by_score
 
 MISSING = -1  # bài không có vector (không xuất hiện trong train)
 
@@ -73,10 +73,7 @@ class SessionVectorTaste:
             return self.fallback.candidates(session, k=k)
         # cùng kiểu float32 với vector bài: nhân với vector float64 thì numpy chép cả ma trận sang float64 (chậm ~15 lần)
         scores = self.vectors @ session_vector(self.vectors, rows, self.decay).astype(self.vectors.dtype)
-        n_top = min(k + len(session), len(scores))  # đủ chỗ cho k ứng viên sau khi bỏ bài trong phiên
-        top = np.argpartition(-scores, n_top - 1)[:n_top]
-        top = top[np.lexsort((top, -scores[top]))]  # điểm giảm dần; hòa thì theo thứ tự bài trong index
-        return top_k_excluding(self.index.to_numpy()[top], scores[top], session, k)
+        return top_k_by_score(self.index.to_numpy(), scores, session, k)
 
     def embeddings(self) -> tuple[np.ndarray, pd.DataFrame]:
         """(vectors, index) theo docs/data-contract.md: item_embeddings/{model}.npy và {model}_tracks.parquet."""
