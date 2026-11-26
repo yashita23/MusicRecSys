@@ -33,7 +33,8 @@ from src.models.session import SessionVectorTaste
 
 CONFIDENCE = 40.0  # alpha của implicit: độ tin cậy của một ô có mặt = 1 + 40 (Hu, Koren, Volinsky 2008); ô trống = 1
 ITERATIONS = 15
-GRID = {"factors": (64, 128), "regularization": (0.01, 0.1), "decay": (0.5, 0.7, 0.9, 1.0)}
+# Lưới lần 1 {64, 128} × {0,01; 0,1}: tốt nhất ở mép (128; 0,1), nên lần 2 mở rộng về phía đó (notebooks/05_als.ipynb)
+GRID = {"factors": (128, 256), "regularization": (0.1, 1.0, 10.0), "decay": (0.5, 0.7, 0.9, 1.0)}
 PARAMS_FILE = "als_params.json"
 
 

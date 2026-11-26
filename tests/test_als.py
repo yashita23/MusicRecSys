@@ -78,7 +78,7 @@ def test_cli_tunes_on_val_then_writes_candidates_embeddings_and_chosen_params(fa
 
     chosen = json.loads((tmp_path / "als_params.json").read_text(encoding="utf-8"))
     grid = chosen["grid"]
-    assert len(grid) == 16  # factors {64, 128} × regularization {0,01; 0,1} × decay {0,5; 0,7; 0,9; 1,0}
+    assert len(grid) == 24  # factors {128, 256} × regularization {0,1; 1; 10} × decay {0,5; 0,7; 0,9; 1,0}
     best = max(grid, key=lambda row: row["ndcg"])
     assert chosen["params"] == {key: best[key] for key in ("factors", "regularization", "decay")}
     assert vectors.shape[1] == chosen["params"]["factors"]
