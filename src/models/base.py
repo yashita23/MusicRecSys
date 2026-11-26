@@ -36,6 +36,17 @@ def top_k_excluding(ordered_ids: np.ndarray, ordered_scores: np.ndarray, exclude
     return ids, scores
 
 
+def top_k_by_score(track_ids: np.ndarray, scores: np.ndarray, exclude: Sequence[str], k: int) -> tuple[list[str], np.ndarray]:
+    """k bài điểm cao nhất (track_ids[i] có điểm scores[i]), bỏ các bài trong exclude; hòa thì theo thứ tự track_ids.
+
+    Chỉ xếp k + len(exclude) bài đầu (argpartition), không xếp cả danh mục.
+    """
+    n_top = min(k + len(exclude), len(scores))  # đủ chỗ cho k ứng viên sau khi bỏ bài trong phiên
+    top = np.argpartition(-scores, n_top - 1)[:n_top]
+    top = top[np.lexsort((top, -scores[top]))]  # điểm giảm dần; hòa thì theo vị trí trong track_ids
+    return top_k_excluding(track_ids[top], scores[top], exclude, k)
+
+
 def export_candidates(model: TasteModel, eval_targets: pd.DataFrame, split: str, k: int = N_CANDIDATES) -> pd.DataFrame:
     """Bảng candidates của một split theo docs/data-contract.md: mỗi phiên k dòng, rank 1…k, seed bị loại."""
     parts = []
