@@ -22,7 +22,8 @@ Phần mạng (`network.py`) chuyển từ **SASRec.pytorch** của Zan Huang (p
 - **Lấy mẫu huấn luyện** (`data.py`, viết lại thay `utils.WarpSampler`):
   - Mỗi epoch mỗi playlist cho một đoạn liên tiếp ngẫu nhiên dài tối đa `maxlen + 1`, thay vì `maxlen` bài cuối.
   - Độ dài tối đa 50 theo spec §6.
-- **Dừng sớm:** sau mỗi epoch đo NDCG@10 trên một mẫu 2.000 phiên val bằng `src.eval.run.evaluate`. Giữ trạng thái tốt nhất, dừng khi 3 epoch không tăng hoặc hết 40 phút.
+  - **Đệm bên phải** thay vì bên trái, cả lúc học lẫn lúc gợi ý (`data.seed_input`): chuỗi luôn bắt đầu ở vị trí 1, đặc trưng lấy ở vị trí bài cuối thật. Seed 5 bài vì vậy có đúng bố cục "5 bài đầu một cửa sổ → bài thứ 6" lúc học; mặt nạ nhân quả làm các ô đệm phía sau không ảnh hưởng. Đệm trái (bản gốc) đặt seed ở vị trí 46–50 sau 45 ô đệm, ngữ cảnh mà mô hình gần như không gặp khi học trên playlist MPD (dài hơn 50 bài). Bản gốc không gặp vấn đề này vì luôn đưa vào cả lịch sử dài của người dùng.
+- **Dừng sớm:** sau mỗi epoch đo NDCG@10 trên một mẫu 2.000 phiên val bằng `src.eval.run.evaluate`. Giữ trạng thái tốt nhất, dừng khi 10 epoch không tăng hoặc hết 40 phút.
 - **Suy luận:**
   - Đầu vào là seed (5 bài đầu playlist), bỏ bài không có trong train, đệm trái đến 50.
   - Seed không còn bài nào thì lấy ứng viên theo Popularity, giống các mô hình gu khác.

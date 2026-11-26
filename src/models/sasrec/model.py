@@ -23,7 +23,7 @@ from src.data.schema import N_CANDIDATES
 from src.eval.run import VAL, evaluate
 from src.models.base import export_candidates
 from src.models.popularity import Popularity
-from src.models.sasrec.data import PAD, train_sequences, training_windows
+from src.models.sasrec.data import PAD, seed_input, train_sequences, training_windows
 from src.models.sasrec.network import SASRecNetwork
 
 
@@ -40,7 +40,7 @@ class SASRecParams:
     maxlen: int = 50          # spec §6: độ dài tối đa 50
     negatives: int = 256      # mẫu âm dùng chung cho cả batch
     max_epochs: int = 200
-    patience: int = 3         # dừng khi NDCG@10 val không tăng sau từng ấy epoch
+    patience: int = 10        # dừng khi NDCG@10 val không tăng sau từng ấy epoch (3 thì dừng ở epoch 28 khi còn đang tăng, lần chạy 1)
     minutes: float = 40.0     # dừng khi hết thời gian (tiêu chí #16: ≤ 1 giờ GPU)
     val_sessions: int = 2000  # số phiên val đo sau mỗi epoch
 
@@ -133,24 +133,23 @@ class SASRec:
     def candidates_batch(self, sessions: Sequence[Sequence[str]], k: int = N_CANDIDATES) -> list[tuple[list[str], np.ndarray]]:
         """Top-k của nhiều phiên trong một lượt chạy mạng; export_candidates dùng hàm này khi có.
 
-        Điểm gu = đặc trưng ở vị trí cuối của phiên (bỏ bài không có trong train, đệm trái đến maxlen) · embedding bài.
+        Điểm gu = đặc trưng ở vị trí bài cuối của phiên (bỏ bài không có trong train, đệm phải đến maxlen) · embedding bài.
         Bài đã có trong phiên bị che trước khi lấy top-k trên thiết bị (GPU nếu có). Phiên không còn bài nào → Popularity.
         """
         p = self.params
         sessions = [list(s) for s in sessions]
         results: list[tuple[list[str], np.ndarray] | None] = [None] * len(sessions)
-        rows, seqs, excluded = [], [], []
+        rows, seqs, lasts, excluded = [], [], [], []
         for i, session in enumerate(sessions):
             codes = self.index.get_indexer(session)
             known = codes[codes >= 0] + 1
             if len(known) == 0:
                 results[i] = self.popularity.candidates(session, k=k)
                 continue
-            seq = np.full(p.maxlen, PAD, dtype=np.int64)
-            tail = known[-p.maxlen :]
-            seq[-len(tail) :] = tail
+            seq, last = seed_input(known, p.maxlen)
             rows.append(i)
             seqs.append(seq)
+            lasts.append(last)
             excluded.append(np.unique(known) - 1)  # cột trong bảng điểm (bài mã c ở cột c - 1)
         if rows:
             n_items = len(self.index)
@@ -158,7 +157,8 @@ class SASRec:
             if short:
                 raise ValueError(f"chỉ có {n_items - max(short)} ứng viên ngoài phiên, cần {k}: train quá ít bài")
             with torch.no_grad():
-                last = self.network(torch.as_tensor(np.stack(seqs), device=self.device))[:, -1]  # (B, hidden)
+                features = self.network(torch.as_tensor(np.stack(seqs), device=self.device))
+                last = features[torch.arange(len(rows), device=self.device), torch.as_tensor(lasts, device=self.device)]  # (B, hidden)
                 scores = last @ self.network.item_emb.weight[1:].T  # (B, số bài)
                 row_idx = torch.as_tensor(np.repeat(np.arange(len(rows)), [len(e) for e in excluded]), device=self.device)
                 col_idx = torch.as_tensor(np.concatenate(excluded), device=self.device)

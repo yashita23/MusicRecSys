@@ -9,7 +9,7 @@ pytest.importorskip("torch", reason="SASRec cần PyTorch")
 from src.data.fake import make_fake_dataset, write_fake  # noqa: E402
 from src.data.schema import validate_dataset  # noqa: E402
 from src.models.sasrec.cli import main  # noqa: E402
-from src.models.sasrec.data import train_sequences, training_windows  # noqa: E402
+from src.models.sasrec.data import seed_input, train_sequences, training_windows  # noqa: E402
 from src.models.sasrec.model import SASRec, SASRecParams  # noqa: E402
 
 
@@ -34,17 +34,30 @@ def test_train_sequences_encode_train_playlists_in_listening_order_with_codes_fr
     assert [s.tolist() for s in sequences] == [[4, 1], [3, 1, 2]]  # theo session_id: phiên 2 rồi phiên 5
 
 
-def test_a_short_playlist_becomes_one_left_padded_window_of_inputs_and_next_tracks():
-    # [1, 2, 3] với maxlen 4: đầu vào [0, 0, 1, 2], bài kế tiếp [0, 0, 2, 3]
+def test_a_short_playlist_becomes_one_right_padded_window_of_inputs_and_next_tracks():
+    # [1, 2, 3] với maxlen 4: đầu vào [1, 2, 0, 0], bài kế tiếp [2, 3, 0, 0]; chuỗi luôn bắt đầu ở vị trí 1
     inputs, targets = training_windows([np.array([1, 2, 3])], maxlen=4, rng=np.random.default_rng(0))
-    assert inputs.tolist() == [[0, 0, 1, 2]]
-    assert targets.tolist() == [[0, 0, 2, 3]]
+    assert inputs.tolist() == [[1, 2, 0, 0]]
+    assert targets.tolist() == [[2, 3, 0, 0]]
+
+
+def test_a_seed_is_laid_out_exactly_like_the_first_five_tracks_of_a_training_window():
+    # Playlist 6 bài: dự đoán bài 6 từ 5 bài đầu ở vị trí 1–5. Seed 5 bài khi gợi ý phải có đúng bố cục đó.
+    inputs, _ = training_windows([np.array([1, 2, 3, 4, 5, 6])], maxlen=8, rng=np.random.default_rng(0))
+    row, last = seed_input(np.array([1, 2, 3, 4, 5]), maxlen=8)
+    assert inputs[0].tolist() == row.tolist() == [1, 2, 3, 4, 5, 0, 0, 0]
+    assert last == 4  # đặc trưng lấy ở vị trí của bài seed cuối
+
+
+def test_a_seed_longer_than_maxlen_keeps_its_last_tracks():
+    row, last = seed_input(np.array([1, 2, 3, 4, 5]), maxlen=3)
+    assert row.tolist() == [3, 4, 5] and last == 2
 
 
 def test_a_long_playlist_contributes_a_random_contiguous_window_of_maxlen():
     playlist = np.arange(1, 21)  # 20 bài
     inputs, targets = training_windows([playlist], maxlen=5, rng=np.random.default_rng(1))
-    window = np.concatenate([inputs[0], targets[0][-1:]])  # 6 bài liên tiếp
+    window = np.concatenate([inputs[0], targets[0][-1:]])  # 6 bài liên tiếp (cửa sổ đầy, không có ô đệm)
     start = int(window[0]) - 1
     assert window.tolist() == playlist[start : start + 6].tolist()
     assert (targets[0][:-1] == inputs[0][1:]).all()
@@ -52,7 +65,7 @@ def test_a_long_playlist_contributes_a_random_contiguous_window_of_maxlen():
 
 def test_playlists_with_a_single_track_give_no_training_window():
     inputs, targets = training_windows([np.array([7]), np.array([1, 2])], maxlen=3, rng=np.random.default_rng(0))
-    assert inputs.tolist() == [[0, 0, 1]] and targets.tolist() == [[0, 0, 2]]
+    assert inputs.tolist() == [[1, 0, 0]] and targets.tolist() == [[2, 0, 0]]
 
 
 # 12 bài nối thành một vòng theo thứ tự ngẫu nhiên (không theo track_id); mỗi phiên train là 8 bài liên tiếp trên vòng
