@@ -36,15 +36,15 @@ App Streamlit chưa có: prototype trên dữ liệu giả ở #11, bản đọc
 
 ## Chạy lại pipeline trên Kaggle
 
-Mỗi notebook clone repo từ GitHub, gọi hàm trong `src/`, và ghi output để đăng thành một Kaggle Dataset có phiên bản. Bước sau Add Input bộ của bước trước. Khi tạo notebook mới, chép `notebooks/template.ipynb`: ô đầu tiên là đoạn bootstrap.
+Mỗi notebook clone repo từ GitHub và gọi hàm trong `src/`. Từ notebook 02 trở đi, output được đăng thành một Kaggle Dataset có phiên bản, và bước sau Add Input bộ của bước trước. Khi tạo notebook mới, chép `notebooks/template.ipynb`: ô đầu tiên là đoạn bootstrap.
 
-| notebook | ticket | input | output (Kaggle Dataset) |
+| notebook | ticket | input | output |
 | --- | --- | --- | --- |
-| `00_env_check` | #2 | không cần | không ghi file; kiểm tra môi trường |
-| `01_coverage` | #1 | MPD (bản sao Kaggle), bộ audio features | không ghi file; đo độ phủ ghép |
-| `02_build` | #5 | MPD, bộ audio features | `mixnext-processed` (`sessions_raw`, `tracks_raw`) |
-| `03_split` | #6, #7 | `mixnext-processed` | `titeohihi/mixnext-splited` (`tracks`, `sessions`, `eval_targets`) |
-| `04_baselines` | #9 | `mixnext-splited` | `mixnext-candidates` (Popularity, item-kNN) |
+| `00_env_check` | #2 | không cần | không ghi file; kiểm tra môi trường và in khối `requirements.txt` |
+| `01_coverage` | #1 | `himanshuwagh/spotify-million`, `krishsharma0413/2-million-songs-from-mpd-with-audio-features` | `coverage.json` (không đăng Dataset); đo độ phủ ghép |
+| `02_build` | #5 | như notebook 01 | Dataset `mixnext-processed`: `sessions_raw.parquet`, `tracks_raw.parquet`, `build_log.json` |
+| `03_split` | #6, #7 | `mixnext-processed` | Dataset `titeohihi/mixnext-splited`: `tracks.parquet`, `sessions.parquet`, `eval_targets.parquet`, `split_report.json` |
+| `04_baselines` | #9 | `titeohihi/mixnext-splited` | Dataset `mixnext-candidates`: candidates của Popularity và item-kNN liền kề |
 
 Bật Internet ở mọi notebook (để clone repo và `pip install`). Chỉ cần CPU.
 
