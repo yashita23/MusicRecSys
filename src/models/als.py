@@ -35,7 +35,7 @@ class ALSParams:
 class ALS(EmbeddingTasteModel):
     name = "als"
 
-    def __init__(self, params: ALSParams = ALSParams(), iterations: int = ITERATIONS, random_seed: int = 0):
+    def __init__(self, params: ALSParams = ALSParams(), random_seed: int = 0, iterations: int = ITERATIONS):
         super().__init__(params, random_seed)
         self.iterations = iterations
 
@@ -64,7 +64,7 @@ class ALS(EmbeddingTasteModel):
         return model.item_factors, track_ids
 
 
-SPEC = EmbeddingSpec(name=ALS.name, params_cls=ALSParams, build=lambda params, seed: ALS(params, random_seed=seed), grid=GRID)
+SPEC = EmbeddingSpec(name=ALS.name, params_cls=ALSParams, build=ALS, grid=GRID)
 
 
 def main(argv: list[str] | None = None) -> dict:

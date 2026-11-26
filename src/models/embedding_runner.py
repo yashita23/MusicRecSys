@@ -76,8 +76,16 @@ class EmbeddingSpec:
 
     name: str
     params_cls: type
-    build: Callable[[Any, int], EmbeddingTasteModel]  # (params, random_seed) → mô hình chưa học
+    build: Callable[..., EmbeddingTasteModel]  # build(params, random_seed=...) → mô hình chưa học
     grid: dict[str, tuple]  # tên tham số → các giá trị thử; phải có "decay"
+
+    def __post_init__(self) -> None:
+        fields = {field.name for field in dataclasses.fields(self.params_cls)}
+        if DECAY not in self.grid:
+            raise ValueError(f"lưới của {self.name} phải có {DECAY} (tham số của vector phiên)")
+        unknown = sorted(set(self.grid) - fields)
+        if unknown:
+            raise ValueError(f"lưới của {self.name} có tham số không thuộc {self.params_cls.__name__}: {', '.join(unknown)}")
 
     @property
     def params_file(self) -> str:
@@ -94,7 +102,7 @@ def tune(spec: EmbeddingSpec, sessions: pd.DataFrame, eval_targets: pd.DataFrame
     best: tuple[EmbeddingTasteModel, pd.DataFrame] | None = None
     best_ndcg = -1.0
     for values in product(*(spec.grid[key] for key in learned)):
-        fitted = spec.build(spec.params_cls(**dict(zip(learned, values))), random_seed).fit(sessions)
+        fitted = spec.build(spec.params_cls(**dict(zip(learned, values))), random_seed=random_seed).fit(sessions)
         for decay in spec.grid[DECAY]:
             model = fitted.with_decay(decay)
             val_cands = export_candidates(model, eval_targets, VAL)
@@ -106,9 +114,10 @@ def tune(spec: EmbeddingSpec, sessions: pd.DataFrame, eval_targets: pd.DataFrame
     return best[0], best[1], rows
 
 
-def run(spec: EmbeddingSpec, data_dir: str | Path, out_dir: str | Path, run: int = 0, params_path: str | Path | None = None) -> dict:
-    if params_path is None and run != 0:
-        raise ValueError(f"lần chạy {run} phải dùng lại tham số của lần chạy 0: thêm --params <out>/{spec.params_file}")
+def run(spec: EmbeddingSpec, data_dir: str | Path, out_dir: str | Path, run_number: int = 0, params_path: str | Path | None = None) -> dict:
+    """Lần chạy run_number (cũng là random_seed): chọn tham số nếu chưa có params_path, rồi ghi file."""
+    if params_path is None and run_number != 0:
+        raise ValueError(f"lần chạy {run_number} phải dùng lại tham số của lần chạy 0: thêm --params <out>/{spec.params_file}")
     data = Path(data_dir)
     tracks = pd.read_parquet(data / "tracks.parquet")
     sessions = pd.read_parquet(data / "sessions.parquet")
@@ -116,23 +125,23 @@ def run(spec: EmbeddingSpec, data_dir: str | Path, out_dir: str | Path, run: int
 
     grid = None
     if params_path is None:
-        model, val_cands, grid = tune(spec, sessions, eval_targets, random_seed=run)
+        model, val_cands, grid = tune(spec, sessions, eval_targets, random_seed=run_number)
         cands = {VAL: val_cands}
     else:
         params = spec.params_cls(**json.loads(Path(params_path).read_text(encoding="utf-8"))["params"])
-        model, cands = spec.build(params, run).fit(sessions), {}
+        model, cands = spec.build(params, random_seed=run_number).fit(sessions), {}
     for split in EVAL_SPLITS:
         if split not in cands:
             cands[split] = export_candidates(model, eval_targets, split)
 
-    embeddings = {spec.name: model.taste.embeddings()} if run == 0 else {}  # tên file embedding không có số lần chạy
+    embeddings = {spec.name: model.taste.embeddings()} if run_number == 0 else {}  # tên file embedding không có số lần chạy
     validate_dataset(tracks, sessions, eval_targets, candidates=cands, embeddings=embeddings)
-    save_candidates(cands, out_dir, spec.name, run)
+    save_candidates(cands, out_dir, spec.name, run_number)
     for vectors, index in embeddings.values():
         save_embeddings(vectors, index, out_dir, spec.name)
 
     params_dict = asdict(model.params)
-    report: dict = {"params": params_dict, "run": run, "val": asdict(evaluate(cands[VAL], eval_targets))}
+    report: dict = {"params": params_dict, "run": run_number, "val": asdict(evaluate(cands[VAL], eval_targets))}
     if grid is not None:
         report["grid"] = grid
         chosen = {"params": params_dict, "grid": grid}

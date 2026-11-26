@@ -42,7 +42,7 @@ class Item2Vec(EmbeddingTasteModel):
 
     def __init__(self, params: Item2VecParams = Item2VecParams(), random_seed: int = 0, workers: int | None = None, epochs: int = EPOCHS):
         super().__init__(params, random_seed)
-        self.workers = workers or os.cpu_count() or 1
+        self.workers = workers if workers is not None else os.cpu_count() or 1  # None: mọi CPU
         self.epochs = epochs
 
     def _learn(self, train: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
@@ -65,9 +65,7 @@ class Item2Vec(EmbeddingTasteModel):
         return model.wv[track_ids.tolist()].astype(np.float32), track_ids
 
 
-SPEC = EmbeddingSpec(
-    name=Item2Vec.name, params_cls=Item2VecParams, build=lambda params, seed: Item2Vec(params, random_seed=seed), grid=GRID
-)
+SPEC = EmbeddingSpec(name=Item2Vec.name, params_cls=Item2VecParams, build=Item2Vec, grid=GRID)
 
 
 def main(argv: list[str] | None = None) -> dict:
