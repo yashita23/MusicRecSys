@@ -15,12 +15,10 @@ from pathlib import Path
 import pandas as pd
 
 from src.data.schema import EVAL_SPLITS, validate_dataset
-from src.eval.run import Accuracy, evaluate
+from src.eval.run import VAL, Accuracy, evaluate
 from src.models.base import TasteModel, export_candidates, save_candidates
 from src.models.item_knn import ItemKNN
 from src.models.popularity import Popularity
-
-VAL = "val"  # split dùng để chọn tham số và làm mốc
 
 
 def run_baselines(data_dir: str | Path, out_dir: str | Path) -> dict[str, Accuracy]:

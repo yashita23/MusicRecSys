@@ -8,7 +8,7 @@ pytest.importorskip("implicit", reason="ALS cần implicit (pip install implicit
 
 from src.data.fake import make_fake_dataset, write_fake  # noqa: E402
 from src.data.schema import validate_dataset, validate_item_embeddings  # noqa: E402
-from src.models.als import ALS, main  # noqa: E402
+from src.models.als import ALS, ALSParams, main  # noqa: E402
 
 
 def tid(prefix: str, i: int) -> str:
@@ -20,9 +20,9 @@ JAZZ = [tid("jazz", i) for i in range(12)]
 NEVER_TRAIN = tid("val", 0)
 
 
-def two_clusters(n_per_cluster: int = 40, length: int = 6, seed: int = 0) -> pd.DataFrame:
+def two_clusters(n_per_cluster: int = 40, length: int = 6, random_seed: int = 0) -> pd.DataFrame:
     """Playlist train chỉ chứa bài rock hoặc chỉ bài jazz; thêm một phiên val để chắc ALS chỉ học từ train."""
-    rng = np.random.default_rng(seed)
+    rng = np.random.default_rng(random_seed)
     rows = []
     for sid in range(2 * n_per_cluster):
         cluster = ROCK if sid % 2 == 0 else JAZZ
@@ -35,7 +35,7 @@ def two_clusters(n_per_cluster: int = 40, length: int = 6, seed: int = 0) -> pd.
 @pytest.fixture(scope="module")
 def als():
     # 2 chiều cho 2 cụm: thừa chiều so với dữ liệu đồ chơi 24 bài thì ALS khớp từng playlist và vector bài nhiễu
-    return ALS(factors=2, regularization=0.1, decay=0.9, iterations=15, random_seed=0).fit(two_clusters())
+    return ALS(ALSParams(factors=2, regularization=0.1, decay=0.9), random_seed=0).fit(two_clusters())
 
 
 def test_a_rock_session_gets_rock_candidates_first(als):
@@ -46,15 +46,16 @@ def test_a_rock_session_gets_rock_candidates_first(als):
 
 
 def test_embeddings_follow_the_contract_and_cover_only_train_tracks(als):
-    vectors, index = als.embeddings()
+    vectors, index = als.taste.embeddings()
     validate_item_embeddings(vectors, index)
     assert vectors.shape == (24, 2) and vectors.dtype == np.float32
     assert set(index["track_id"]) == set(ROCK + JAZZ)  # bài chỉ có ở val không có vector
 
 
 def test_same_random_seed_gives_the_same_vectors():
-    a = ALS(factors=2, regularization=0.1, random_seed=3).fit(two_clusters()).embeddings()[0]
-    b = ALS(factors=2, regularization=0.1, random_seed=3).fit(two_clusters()).embeddings()[0]
+    params = ALSParams(factors=2, regularization=0.1)
+    a = ALS(params, random_seed=3).fit(two_clusters()).taste.embeddings()[0]
+    b = ALS(params, random_seed=3).fit(two_clusters()).taste.embeddings()[0]
     np.testing.assert_array_equal(a, b)
 
 
@@ -95,3 +96,16 @@ def test_a_later_run_reuses_the_chosen_params_without_retuning(fake_dir, tmp_pat
     assert (tmp_path / "out" / "candidates" / "als_test_run1.parquet").is_file()
     assert not (tmp_path / "out" / "item_embeddings").exists()  # embedding chỉ xuất ở lần chạy 0
     assert "grid" not in json.loads(capsys.readouterr().out)
+
+
+def test_a_later_run_without_the_chosen_params_is_refused(fake_dir, tmp_path):
+    # Lần chạy 1, 2 phải dùng lại tham số của lần chạy 0; tự chọn lại với random_seed khác sẽ ghi đè als_params.json
+    _, root = fake_dir
+    with pytest.raises(ValueError, match="--params"):
+        main(["--data", str(root), "--out", str(tmp_path), "--run", "1"])
+
+
+def test_fitting_without_train_sessions_says_so():
+    only_val = two_clusters().assign(split="val")
+    with pytest.raises(ValueError, match="train"):
+        ALS().fit(only_val)

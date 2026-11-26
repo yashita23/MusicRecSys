@@ -39,7 +39,8 @@ class SessionVectorTaste:
     def __init__(self, name: str, vectors: np.ndarray, track_ids: Sequence[str], decay: float, fallback: TasteModel):
         self.name = name
         self.vectors = np.asarray(vectors, dtype=np.float32)
-        self.index = pd.Index(np.asarray(track_ids, dtype=object))  # phần tử là str thường, không phải np.str_
+        # phần tử là str thường, không phải np.str_. Hòa điểm thì xếp theo thứ tự này: truyền track_ids đã sắp xếp
+        self.index = pd.Index(np.asarray(track_ids, dtype=object))
         self.decay = decay
         self.fallback = fallback
 
@@ -56,7 +57,12 @@ class SessionVectorTaste:
             return self.fallback.candidates(session, k=k)
         # cùng kiểu float32 với vector bài: nhân với vector float64 thì numpy chép cả ma trận sang float64 (chậm ~15 lần)
         scores = self.vectors @ session_vector(self.vectors, rows, self.decay).astype(self.vectors.dtype)
-        m = min(k + len(session), len(scores))  # đủ chỗ cho k ứng viên sau khi bỏ bài trong phiên
-        top = np.argpartition(-scores, m - 1)[:m]
+        n_top = min(k + len(session), len(scores))  # đủ chỗ cho k ứng viên sau khi bỏ bài trong phiên
+        top = np.argpartition(-scores, n_top - 1)[:n_top]
         top = top[np.lexsort((top, -scores[top]))]  # điểm giảm dần; hòa thì theo thứ tự bài trong index
         return top_k_excluding(self.index.to_numpy()[top], scores[top], session, k)
+
+    def embeddings(self) -> tuple[np.ndarray, pd.DataFrame]:
+        """(vectors, index) theo docs/data-contract.md: item_embeddings/{model}.npy và {model}_tracks.parquet."""
+        index = pd.DataFrame({"row": np.arange(len(self.index)), "track_id": self.index.to_numpy()})
+        return self.vectors, index
