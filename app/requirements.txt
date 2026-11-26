@@ -1,0 +1,6 @@
+# Gói cho app Streamlit (#11): pip install -r app/requirements.txt
+# Python 3.11+ (app đọc config bằng tomllib). Không cần torch (spec §5).
+numpy==2.1.3
+pandas==2.3.3
+pyarrow==23.0.1
+streamlit==1.67.0

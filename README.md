@@ -13,7 +13,7 @@ src/
 └── eval/        # độ chính xác (accuracy, run), độ mượt (smoothness)
 notebooks/       # chạy trên Kaggle: clone repo rồi gọi hàm trong src/; template.ipynb là notebook mẫu
 tests/           # pytest
-app/             # app Streamlit (#11)
+app/             # app Streamlit: main.py (giao diện), player.py (hàng đợi theo α), config.toml (đường dẫn dữ liệu)
 artifacts/       # file cho app, lấy từ Kaggle, không commit
 reports/         # hình và bảng kết quả
 data/            # dữ liệu ở máy (raw, processed), không commit
@@ -32,7 +32,15 @@ python -m src.data.fake --out data/fake   # dữ liệu giả theo data-contract
 
 ## Chạy app
 
-App Streamlit chưa có: prototype trên dữ liệu giả ở #11, bản đọc `artifacts/` ở #21. Lệnh chạy và gói cần cài sẽ ghi ở đây.
+App Streamlit chạy trên laptop, không cần mạng, cần Python 3.11+ và không cần torch. Bản hiện tại là prototype trên dữ liệu giả (#11); bản đọc `artifacts/` ở #21.
+
+```bash
+pip install -r app/requirements.txt
+python -m src.data.fake --out data/fake   # một lần, ở thư mục gốc repo
+streamlit run app/main.py
+```
+
+Mọi đường dẫn dữ liệu app đọc nằm trong `app/config.toml` (đường dẫn tương đối tính theo thư mục `app/`). Muốn dùng file config khác thì đặt biến môi trường `MIXNEXT_CONFIG`.
 
 ## Chạy lại pipeline trên Kaggle
 
