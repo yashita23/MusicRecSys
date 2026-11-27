@@ -56,8 +56,11 @@ Mỗi notebook clone repo từ GitHub và gọi hàm trong `src/`. Từ notebook
 | `05_als` | #14 | `titeohihi/mixnext-splited` | Dataset `mixnext-embeddings`: `item_embeddings/als.npy` + `als_tracks.parquet`, `candidates/als_{val,test}_run0.parquet`, `als_params.json` (tham số chọn trên val) |
 | `06_item2vec` | #15 | `titeohihi/mixnext-splited` | Dataset `mixnext-item2vec`: `item_embeddings/item2vec.npy` + `item2vec_tracks.parquet`, `candidates/item2vec_{val,test}_run0.parquet`, `item2vec_params.json` |
 | `07_sasrec` | #16 | `titeohihi/mixnext-splited` | Dataset `mixnext-sasrec`: `candidates/sasrec_{val,test}_run0.parquet`, `sasrec/sasrec_run0.pt` (checkpoint), `sasrec/sasrec_run0.json`. Cần **GPU** |
+| `09_onion_import` | #54 (mở rộng) | không cần; tải thẳng từ Zenodo record 15394646 | Dataset `mixnext-onion`: `onion/listening_events.parquet`, `onion/essentia.parquet`, `onion/import_log.json`, `onion/README.md` |
 
 Bật Internet ở mọi notebook (để clone repo và `pip install`). Chỉ cần CPU, trừ notebook 07 (SASRec) cần GPU. Các Dataset đều để **Private** vì sinh từ MPD.
+
+**Bộ phụ last.fm (mở rộng #54–#57):** Music4All-Onion của Moscati, Parada-Cabaleiro, Deldjoo, Zangerle, Schedl (CIKM 2022), Zenodo record 15394646, DOI 10.5281/zenodo.15394646, giấy phép CC BY 4.0. Nhóm chỉ đổi định dạng và chọn cột.
 
 Dataset tạo từ output của một notebook chỉ nhận version mới từ chính notebook đó. Vì vậy mỗi notebook mô hình gu có một Dataset riêng, chứa cả candidates lẫn embedding của mô hình đó: `mixnext-embeddings` (ALS, notebook 05), `mixnext-item2vec` (notebook 06). Notebook nào cần candidates hay embedding thì Add Input các bộ cần dùng và tìm file theo tên bằng `Path("/kaggle/input").rglob(...)`; trong các bộ này file có tiền tố `out/`.
 
