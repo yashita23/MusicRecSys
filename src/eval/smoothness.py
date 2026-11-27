@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from src.features.track_features import TrackFeatures
 
 MIXABLE_MAX_BPM_DELTA = 0.06   # cặp mix được: ΔBPM ≤ 6% (GLOSSARY)
-_BPM_TOLERANCE = 1e-9          # để lệch đúng 6% (sai số dấu phẩy động) vẫn tính là ≤ 6%
+BPM_TOLERANCE = 1e-9          # để lệch đúng 6% (sai số dấu phẩy động) vẫn tính là ≤ 6%
 
 
 @dataclass(frozen=True)
@@ -35,7 +35,7 @@ def smoothness(chains: Sequence[Sequence[str]], features: TrackFeatures) -> Smoo
     rows_b = features.rows([b for _, b in pairs])
     delta = features.bpm_delta(rows_a, rows_b)
     key_ok = features.compatible_keys(rows_a, rows_b)
-    mixable = (delta <= MIXABLE_MAX_BPM_DELTA + _BPM_TOLERANCE) & key_ok
+    mixable = (delta <= MIXABLE_MAX_BPM_DELTA + BPM_TOLERANCE) & key_ok
     return Smoothness(
         n_pairs=len(pairs),
         bpm_delta_pct=float(delta.mean() * 100),

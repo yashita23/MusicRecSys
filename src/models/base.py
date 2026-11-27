@@ -50,18 +50,22 @@ def top_k_by_score(track_ids: np.ndarray, scores: np.ndarray, exclude: Sequence[
 BATCH_SESSIONS = 256  # số phiên mỗi lượt khi mô hình chấm được nhiều phiên một lúc (candidates_batch, như SASRec)
 
 
-def export_candidates(model: TasteModel, eval_targets: pd.DataFrame, split: str, k: int = N_CANDIDATES) -> pd.DataFrame:
-    """Bảng candidates của một split theo docs/data-contract.md: mỗi phiên k dòng, rank 1…k, seed bị loại.
+def candidates_for_sessions(model: TasteModel, sessions: Sequence[Sequence[str]], k: int = N_CANDIDATES) -> list[tuple[list[str], np.ndarray]]:
+    """Top-k ứng viên cho từng phiên, theo đúng thứ tự phiên.
 
-    Mô hình có candidates_batch(phiên, k) thì chấm theo lô BATCH_SESSIONS phiên, nếu không thì từng phiên.
+    Mô hình có candidates_batch(phiên, k) (như SASRec) thì chấm theo lô BATCH_SESSIONS phiên, nếu không thì từng phiên.
     """
-    targets = eval_targets.loc[eval_targets["split"] == split]
-    seeds = [list(seed) for seed in targets["seed_track_ids"]]
+    sessions = [list(s) for s in sessions]
     batch = getattr(model, "candidates_batch", None)
-    if batch is not None:
-        results = [r for start in range(0, len(seeds), BATCH_SESSIONS) for r in batch(seeds[start : start + BATCH_SESSIONS], k)]
-    else:
-        results = [model.candidates(seed, k=k) for seed in seeds]
+    if batch is None:
+        return [model.candidates(s, k=k) for s in sessions]
+    return [r for start in range(0, len(sessions), BATCH_SESSIONS) for r in batch(sessions[start : start + BATCH_SESSIONS], k)]
+
+
+def export_candidates(model: TasteModel, eval_targets: pd.DataFrame, split: str, k: int = N_CANDIDATES) -> pd.DataFrame:
+    """Bảng candidates của một split theo docs/data-contract.md: mỗi phiên k dòng, rank 1…k, seed bị loại."""
+    targets = eval_targets.loc[eval_targets["split"] == split]
+    results = candidates_for_sessions(model, [list(seed) for seed in targets["seed_track_ids"]], k)
     parts = []
     for session_id, (ids, scores) in zip(targets["session_id"], results):
         parts.append(pd.DataFrame({"session_id": session_id, "rank": np.arange(1, len(ids) + 1), "track_id": ids, "taste_score": scores}))

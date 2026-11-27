@@ -9,7 +9,7 @@ src/
 ├── data/        # ghép, lọc, chia train/val/test; schema và dữ liệu giả
 ├── features/    # BPM, Camelot, energy
 ├── models/      # baseline (popularity, item_knn), mô hình gu (als, item2vec, sasrec/), vector phiên (session), embedding_runner (chọn tham số, CLI)
-├── rerank/      # điểm mix (mix_rule), xếp lại theo α (combine)
+├── rerank/      # điểm mix theo luật (mix_rule), điểm mix học (mix_learned; huấn luyện ở mix_learned_train), so sánh hai điểm (mix_compare), xếp lại theo α (combine)
 └── eval/        # độ chính xác (accuracy, run), độ mượt (smoothness)
 notebooks/       # chạy trên Kaggle: clone repo rồi gọi hàm trong src/; template.ipynb là notebook mẫu
 tests/           # pytest
@@ -52,17 +52,20 @@ Mỗi notebook clone repo từ GitHub và gọi hàm trong `src/`. Từ notebook
 | `01_coverage` | #1 | `himanshuwagh/spotify-million`, `krishsharma0413/2-million-songs-from-mpd-with-audio-features` | `coverage.json` (không đăng Dataset); đo độ phủ ghép |
 | `02_build` | #5 | như notebook 01 | Dataset `mixnext-processed`: `sessions_raw.parquet`, `tracks_raw.parquet`, `build_log.json` |
 | `03_split` | #6, #7 | `mixnext-processed` | Dataset `titeohihi/mixnext-splited`: `tracks.parquet`, `sessions.parquet`, `eval_targets.parquet`, `split_report.json` |
-| `04_baselines` | #9 | `titeohihi/mixnext-splited` | Dataset `mixnext-candidates`: candidates của Popularity và item-kNN liền kề |
-| `05_als` | #14 | `titeohihi/mixnext-splited` | Dataset `mixnext-embeddings`: `item_embeddings/als.npy` + `als_tracks.parquet`, `candidates/als_{val,test}_run0.parquet`, `als_params.json` (tham số chọn trên val) |
-| `06_item2vec` | #15 | `titeohihi/mixnext-splited` | Dataset `mixnext-item2vec`: `item_embeddings/item2vec.npy` + `item2vec_tracks.parquet`, `candidates/item2vec_{val,test}_run0.parquet`, `item2vec_params.json` |
-| `07_sasrec` | #16 | `titeohihi/mixnext-splited` | Dataset `mixnext-sasrec`: `candidates/sasrec_{val,test}_run0.parquet`, `sasrec/sasrec_run0.pt` (checkpoint), `sasrec/sasrec_run0.json`. Cần **GPU** |
+| `04_baselines` | #9 | `titeohihi/mixnext-splited` | Dataset `mixnext-candidates`: ứng viên của Popularity và item-kNN liền kề |
+| `05_als` | #14 | `titeohihi/mixnext-splited` | Dataset `mixnext-embeddings`: ứng viên, embedding và `als_params.json` của ALS |
+| `06_item2vec` | #15 | `titeohihi/mixnext-splited` | Dataset `mixnext-item2vec`: ứng viên, embedding và `item2vec_params.json` của item2vec |
+| `07_sasrec` | #16 | `titeohihi/mixnext-splited` | Dataset `mixnext-sasrec`: ứng viên, checkpoint và báo cáo huấn luyện của SASRec. Cần **GPU** |
+| `08_mix_learned` | #23 | `titeohihi/mixnext-splited` | Dataset `mixnext-mix-learned`: trọng số numpy của điểm mix học (`mix_learned.npz`) và báo cáo huấn luyện (`mix_learned.json`) |
 | `09_onion_import` | #54 (mở rộng) | không cần; tải thẳng từ Zenodo record 15394646 | Dataset `mixnext-onion`: `onion/listening_events.parquet`, `onion/essentia.parquet`, `onion/import_log.json`, `onion/README.md` |
+| `12_learned_vs_rule` | #24 | `titeohihi/mixnext-splited`, `mixnext-mix-learned` | Không đăng Dataset: hình và bảng so sánh điểm mix học với luật cho báo cáo (`out/learned_vs_rule/`) |
+| `13_sweep` | #19 | `titeohihi/mixnext-splited`, `mixnext-candidates` | Không đăng Dataset: `out/sweep_v1.csv` (độ chính xác và độ mượt theo α, α được chọn) và `out/fig_tradeoff_v1.png`; dán CSV vào PR, bảng và hình (vẽ lại bằng `--plot-only`) được commit vào `reports/` |
 
 Bật Internet ở mọi notebook (để clone repo và `pip install`). Chỉ cần CPU, trừ notebook 07 (SASRec) cần GPU. Các Dataset đều để **Private** vì sinh từ MPD.
 
 **Bộ phụ last.fm (mở rộng #54–#57):** Music4All-Onion của Moscati, Parada-Cabaleiro, Deldjoo, Zangerle, Schedl (CIKM 2022), Zenodo record 15394646, DOI 10.5281/zenodo.15394646, giấy phép CC BY 4.0. Nhóm chỉ đổi định dạng và chọn cột.
 
-Dataset tạo từ output của một notebook chỉ nhận version mới từ chính notebook đó. Vì vậy mỗi notebook mô hình gu có một Dataset riêng, chứa cả candidates lẫn embedding của mô hình đó: `mixnext-embeddings` (ALS, notebook 05), `mixnext-item2vec` (notebook 06). Notebook nào cần candidates hay embedding thì Add Input các bộ cần dùng và tìm file theo tên bằng `Path("/kaggle/input").rglob(...)`; trong các bộ này file có tiền tố `out/`.
+Dataset tạo từ output của một notebook chỉ nhận version mới từ chính notebook đó. Vì vậy mỗi notebook 04–07 có một Dataset riêng; với mô hình có embedding, Dataset chứa cả ứng viên lẫn embedding của mô hình đó. Notebook nào cần ứng viên hay embedding thì Add Input các bộ cần dùng và tìm file theo tên bằng `Path("/kaggle/input").rglob(...)`; trong các bộ này file có tiền tố `out/`. Đường dẫn từng file trong các bộ 04–07 ghi ở mục Bố cục thư mục của [`docs/data-contract.md`](docs/data-contract.md).
 
 ## Môi trường
 
