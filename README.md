@@ -57,9 +57,12 @@ Mỗi notebook clone repo từ GitHub và gọi hàm trong `src/`. Từ notebook
 | `06_item2vec` | #15 | `titeohihi/mixnext-splited` | Dataset `mixnext-item2vec`: ứng viên, embedding và `item2vec_params.json` của item2vec |
 | `07_sasrec` | #16 | `titeohihi/mixnext-splited` | Dataset `mixnext-sasrec`: ứng viên, checkpoint và báo cáo huấn luyện của SASRec. Cần **GPU** |
 | `08_mix_learned` | #23 | `titeohihi/mixnext-splited` | Dataset `mixnext-mix-learned`: trọng số numpy của điểm mix học (`mix_learned.npz`) và báo cáo huấn luyện (`mix_learned.json`) |
+| `09_onion_import` | #54 (mở rộng) | không cần; tải thẳng từ Zenodo record 15394646 | Dataset `mixnext-onion`: `onion/listening_events.parquet`, `onion/essentia.parquet`, `onion/import_log.json`, `onion/README.md` |
 | `12_learned_vs_rule` | #24 | `titeohihi/mixnext-splited`, `mixnext-mix-learned` | Không đăng Dataset: hình và bảng so sánh điểm mix học với luật cho báo cáo (`out/learned_vs_rule/`) |
 
 Bật Internet ở mọi notebook (để clone repo và `pip install`). Chỉ cần CPU, trừ notebook 07 (SASRec) cần GPU. Các Dataset đều để **Private** vì sinh từ MPD.
+
+**Bộ phụ last.fm (mở rộng #54–#57):** Music4All-Onion của Moscati, Parada-Cabaleiro, Deldjoo, Zangerle, Schedl (CIKM 2022), Zenodo record 15394646, DOI 10.5281/zenodo.15394646, giấy phép CC BY 4.0. Nhóm chỉ đổi định dạng và chọn cột.
 
 Dataset tạo từ output của một notebook chỉ nhận version mới từ chính notebook đó. Vì vậy mỗi notebook 04–07 có một Dataset riêng; với mô hình có embedding, Dataset chứa cả ứng viên lẫn embedding của mô hình đó. Notebook nào cần ứng viên hay embedding thì Add Input các bộ cần dùng và tìm file theo tên bằng `Path("/kaggle/input").rglob(...)`; trong các bộ này file có tiền tố `out/`. Đường dẫn từng file trong các bộ 04–07 ghi ở mục Bố cục thư mục của [`docs/data-contract.md`](docs/data-contract.md).
 
