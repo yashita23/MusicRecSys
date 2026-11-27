@@ -104,8 +104,10 @@ def plot_tradeoff(table: pd.DataFrame, path: str | Path) -> Path:
     pick = table.loc[np.isclose(table["alpha"], chosen)].iloc[0]
     fig, (left, right) = plt.subplots(1, 2, figsize=(11, 4.2))
     left.plot(table["mixable_pct"], table["ndcg"], marker="o", color="#3b6ea5")
-    for _, row in table.iterrows():
-        left.annotate(f"α={row['alpha']:.1f}", (row["mixable_pct"], row["ndcg"]), textcoords="offset points", xytext=(4, 4), fontsize=8)
+    for _, row in table.iterrows():  # nhãn cách một α: các α gần 1 nằm sát nhau; đủ mọi α ở hình phải
+        if round(row["alpha"] * 10) % 2 == 0:
+            left.annotate(f"α={row['alpha']:.1f}", (row["mixable_pct"], row["ndcg"]), textcoords="offset points",
+                          xytext=(5, 4), fontsize=8)
     left.scatter([pick["mixable_pct"]], [pick["ndcg"]], s=180, facecolors="none", edgecolors="#2e8b57", linewidths=2,
                  label=f"α được chọn = {chosen:.1f}", zorder=3)
     left.set_xlabel("% cặp mix được (chuỗi 10 bài)")
