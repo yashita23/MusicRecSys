@@ -36,6 +36,29 @@ def _check_inputs(ids: list[str], taste: np.ndarray, alpha: float, k: int | None
         raise ValueError(f"ứng viên bị trùng: {len(ids) - len(set(ids))} bài xuất hiện nhiều lần")
 
 
+def final_scores(
+    candidate_ids: Sequence[str],
+    taste_scores: Sequence[float] | np.ndarray,
+    current_track_id: str,
+    mix: MixScorer,
+    alpha: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(gu_norm, điểm mix, điểm cuối) cho từng ứng viên, theo đúng thứ tự ứng viên; kiểm tra đầu vào như rerank.
+
+    Dùng trực tiếp khi chỉ cần top-1 (sinh chuỗi #18) để khỏi dựng DataFrame ở mỗi bước.
+    """
+    ids = list(candidate_ids)
+    taste = np.asarray(taste_scores, dtype=float)
+    _check_inputs(ids, taste, alpha, None)
+    mix_scores = np.asarray(mix(current_track_id, ids), dtype=float)
+    if mix_scores.shape != (len(ids),):
+        raise ValueError(f"hàm điểm mix phải trả về mảng đúng độ dài {len(ids)} ứng viên, đang có shape {mix_scores.shape}")
+    if not np.isfinite(mix_scores).all():
+        raise ValueError(f"điểm mix phải hữu hạn, có {int((~np.isfinite(mix_scores)).sum())} giá trị NaN/inf")
+    norm = gu_norm(taste)
+    return norm, mix_scores, alpha * norm + (1 - alpha) * mix_scores
+
+
 def rerank(
     candidate_ids: Sequence[str],
     taste_scores: Sequence[float] | np.ndarray,
@@ -48,22 +71,16 @@ def rerank(
 
     Cột: rank (1…), track_id, taste_score, gu_norm, mix, final. Hòa điểm cuối thì giữ thứ tự ứng viên đầu vào.
     """
-    ids = list(candidate_ids)
-    taste = np.asarray(taste_scores, dtype=float)
-    _check_inputs(ids, taste, alpha, k)
-    mix_scores = np.asarray(mix(current_track_id, ids), dtype=float)
-    if mix_scores.shape != (len(ids),):
-        raise ValueError(f"hàm điểm mix phải trả về mảng đúng độ dài {len(ids)} ứng viên, đang có shape {mix_scores.shape}")
-    if not np.isfinite(mix_scores).all():
-        raise ValueError(f"điểm mix phải hữu hạn, có {int((~np.isfinite(mix_scores)).sum())} giá trị NaN/inf")
-    norm = gu_norm(taste)
+    if k is not None and k < 1:
+        raise ValueError(f"k phải ≥ 1 (hoặc None để lấy cả danh sách), đang là {k}")
+    norm, mix_scores, final = final_scores(candidate_ids, taste_scores, current_track_id, mix, alpha)
     out = pd.DataFrame(
         {
-            "track_id": ids,
-            "taste_score": taste,
+            "track_id": list(candidate_ids),
+            "taste_score": np.asarray(taste_scores, dtype=float),
             "gu_norm": norm,
             "mix": mix_scores,
-            "final": alpha * norm + (1 - alpha) * mix_scores,
+            "final": final,
         }
     )
     out = out.sort_values("final", ascending=False, kind="stable").head(k if k is not None else len(out))
