@@ -15,6 +15,10 @@ Muốn đổi schema thì mở PR sửa cả ba nơi (tài liệu này, `schema.
 ├── eval_targets.parquet
 ├── split_report.json                    # báo cáo chia tập, xem mục split_report.json
 └── sessions_raw.parquet, tracks_raw.parquet, build_log.json   # file trung gian của A, giữ lại từ v1
+
+<root>/                                  # ở máy hoặc dữ liệu giả (python -m src.data.fake); trên Kaggle xem bên dưới
+├── candidates/{model}_{split}_run{r}.parquet
+└── item_embeddings/{model}.npy, {model}_tracks.parquet
 ```
 
 - `tracks`, `sessions`, `eval_targets` được tạo bằng `python -m src.data.split --raw-dir <thư mục #5> --out <thư mục ra>` (#6, #7). Mỗi phiên được gán vào một split theo hoán vị ngẫu nhiên của `session_id` với `random_seed` = 42, tỉ lệ 80/10/10.
@@ -22,7 +26,7 @@ Muốn đổi schema thì mở PR sửa cả ba nơi (tài liệu này, `schema.
 - `split` ∈ `val`, `test`.
 - `r` là số thứ tự lần chạy: 0, 1, 2.
 
-**Output của mô hình gu.** Mỗi notebook mô hình gu đăng một Kaggle Dataset riêng, vì Dataset tạo từ output của một notebook chỉ nhận version mới từ chính notebook đó. Mọi file trong các bộ này nằm dưới thư mục `out/`. Candidates của mô hình có embedding nằm chung bộ với embedding của nó.
+**Output của các notebook mô hình (04–07) trên Kaggle.** Mỗi notebook đăng một Kaggle Dataset riêng, vì Dataset tạo từ output của một notebook chỉ nhận version mới từ chính notebook đó. Notebook 04 chứa cả hai baseline. Mọi file trong các bộ này nằm dưới thư mục `out/`. Ứng viên của mô hình có embedding (ALS, item2vec) nằm chung bộ với embedding của nó.
 
 ```text
 mixnext-candidates   (notebook 04, #9)
@@ -34,7 +38,11 @@ mixnext-embeddings   (notebook 05, #14 — ALS), rồi được chép vào artif
     ├── item_embeddings/als.npy, als_tracks.parquet                  # chỉ ghi ở lần chạy 0, tên không có số lần chạy
     └── als_params.json                                              # xem mục {model}_params.json
 
-mixnext-item2vec     (notebook 06, #15) — cùng bố cục với mixnext-embeddings, thay als → item2vec
+mixnext-item2vec     (notebook 06, #15)
+└── out/
+    ├── candidates/item2vec_{val,test}_run{r}.parquet
+    ├── item_embeddings/item2vec.npy, item2vec_tracks.parquet        # chỉ ghi ở lần chạy 0
+    └── item2vec_params.json
 
 mixnext-sasrec       (notebook 07, #16)
 └── out/
@@ -45,8 +53,7 @@ mixnext-sasrec       (notebook 07, #16)
 - Lần chạy 1, 2 (#26): chưa chốt cách đăng. Version mới của một Dataset thay **toàn bộ** file của version cũ, nên hoặc notebook phải ghi lại cả file của lần chạy 0, hoặc mỗi lần chạy dùng một Dataset riêng. #26 quyết định và cập nhật mục này.
 - Trong notebook, Add Input các bộ cần dùng, rồi tìm file theo tên bằng `Path("/kaggle/input").rglob("<tên file>")`. Đừng ghi cứng đường dẫn, vì thư mục mount và tiền tố `out/` có thể khác nhau giữa các bộ.
 - Khi tạo Dataset từ output, chỉ giữ `out/`. Bỏ thư mục `MusicRecSys` mà bước bootstrap đã clone vào `/kaggle/working`.
-- Tiền tố `out/` chỉ có trên Kaggle. Ở máy và với dữ liệu giả (`python -m src.data.fake`), `candidates/` và `item_embeddings/` nằm thẳng dưới thư mục gốc. Schema các bảng giống hệt nhau.
-
+- Tiền tố `out/` chỉ có trên Kaggle. Ở máy và với dữ liệu giả, `candidates/` và `item_embeddings/` nằm thẳng dưới thư mục gốc (cây ở trên). Schema các bảng giống hệt nhau.
 
 ## tracks.parquet
 
