@@ -120,7 +120,10 @@ def test_a_row_count_that_differs_from_the_zenodo_readme_fails_without_a_log(zen
     assert not (tmp_path / "out" / "onion" / "import_log.json").exists()
 
 
-def test_a_differing_user_count_is_logged_but_does_not_block(zenodo, tmp_path):
+def test_differing_user_or_essentia_track_counts_are_logged_but_do_not_block(zenodo, tmp_path):
+    # README của record để trống số bài Essentia (thực tế 109.180, các bộ khác 109.269): chỉ so sánh, không chặn
     src, data_md5 = zenodo
-    log = run_fake(src, tmp_path, data_md5=data_md5, expected={**FAKE_EXPECTED, "events_users": 3})
+    log = run_fake(src, tmp_path, data_md5=data_md5, expected={**FAKE_EXPECTED, "events_users": 3, "essentia_tracks": 3})
     assert log["check"]["events_users"] == {"expected": 3, "actual": 2, "ok": False}
+    assert log["check"]["essentia_tracks"] == {"expected": 3, "actual": 2, "ok": False}
+    assert (tmp_path / "out" / "onion" / "import_log.json").exists()

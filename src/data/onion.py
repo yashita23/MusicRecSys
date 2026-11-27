@@ -29,7 +29,9 @@ DATA_MD5 = {
     ESSENTIA_FILE: "6222143003c2cfa0b250dd80a92ac929",  # 407.458.247 byte
 }
 EXPECTED = {"events_rows": 252_984_396, "events_users": 119_140, "essentia_tracks": 109_269}  # theo README của record
-BLOCKING_CHECKS = ("events_rows", "essentia_tracks")  # tiêu chí #54; số user chỉ ghi lại
+# Chỉ số lượt nghe chặn: README ghi rõ 252.984.396. Số bài Essentia README để trống (109.269 là số của các bộ đặc trưng
+# khác; thực tế 109.180 trên Kaggle 27/11/2026) và #54 chỉ yêu cầu "ghi lại và so với": ghi vào log, không chặn.
+BLOCKING_CHECKS = ("events_rows",)
 RETRIES = 3
 TIMEOUT_SECONDS = 120
 
@@ -161,8 +163,8 @@ def run_import(
     """Tải hai file dữ liệu và README vào work_dir (trên Kaggle: /tmp, không phải /kaggle/working), kiểm md5 hai
     file dữ liệu, rồi mới ghi vào out_dir: listening_events.parquet, essentia.parquet, README.md, import_log.json.
 
-    md5 sai → ValueError, không ghi gì vào out_dir. Số lượt nghe hoặc số bài Essentia khác README của record
-    → ValueError, không ghi import_log.json (output coi như chưa xong). Số user lệch chỉ ghi lại.
+    md5 sai → ValueError, không ghi gì vào out_dir. Số lượt nghe khác README của record → ValueError, không ghi
+    import_log.json (output coi như chưa xong). Số user và số bài Essentia chỉ ghi lại và so sánh trong log.
     """
     work, out = Path(work_dir), Path(out_dir)
     work.mkdir(parents=True, exist_ok=True)
