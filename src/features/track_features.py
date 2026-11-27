@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 from src.data.preview import preview_ids
-from src.features.camelot import compatible_keys, parse_camelot, same_key
+from src.features.camelot import camelot_distance, compatible_keys, parse_camelot, same_key
 
 TEMPO_RATIOS = (1.0, 2.0, 0.5)  # xét cả nhịp gấp đôi / một nửa
 
@@ -60,6 +60,9 @@ class TrackFeatures:
 
     def compatible_keys(self, rows_a: np.ndarray, rows_b: np.ndarray) -> np.ndarray:
         return compatible_keys(self.key_num[rows_a], self.key_letter[rows_a], self.key_num[rows_b], self.key_letter[rows_b])
+
+    def camelot_distance(self, rows_a: np.ndarray, rows_b: np.ndarray) -> np.ndarray:
+        return camelot_distance(self.key_num[rows_a], self.key_letter[rows_a], self.key_num[rows_b], self.key_letter[rows_b])
 
     def energy_gap(self, rows_a: np.ndarray, rows_b: np.ndarray) -> np.ndarray:
         return np.abs(self.energy[rows_a] - self.energy[rows_b])

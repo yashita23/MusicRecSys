@@ -33,6 +33,11 @@ def _wheel_step(num_a: np.ndarray, num_b: np.ndarray) -> np.ndarray:
     return np.minimum(step, 12 - step)  # vòng: 12 ↔ 1 cách nhau 1
 
 
+def camelot_distance(num_a: np.ndarray, letter_a: np.ndarray, num_b: np.ndarray, letter_b: np.ndarray) -> np.ndarray:
+    """Khoảng cách trên vòng Camelot: số bước theo số (0–6, 12 ↔ 1 liền nhau) cộng 1 nếu khác chữ A/B; trong 0–7."""
+    return _wheel_step(num_a, num_b) + (letter_a != letter_b).astype(int)
+
+
 def same_key(num_a: np.ndarray, letter_a: np.ndarray, num_b: np.ndarray, letter_b: np.ndarray) -> np.ndarray:
     """Cùng mã Camelot."""
     return (num_a == num_b) & (letter_a == letter_b)
