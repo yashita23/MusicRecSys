@@ -9,6 +9,7 @@ import numpy as np
 from src.data.preview import preview_ids
 
 CAMELOT_PATTERN = r"^(?:[1-9]|1[0-2])[AB]$"
+MAX_CAMELOT_DISTANCE = 7  # 6 bước trên vòng (nửa vòng) + đổi chữ A/B
 _CAMELOT_RE = re.compile(CAMELOT_PATTERN)
 
 
@@ -31,6 +32,11 @@ def parse_camelot(codes: Sequence[str] | np.ndarray) -> tuple[np.ndarray, np.nda
 def _wheel_step(num_a: np.ndarray, num_b: np.ndarray) -> np.ndarray:
     step = np.abs(num_a - num_b) % 12
     return np.minimum(step, 12 - step)  # vòng: 12 ↔ 1 cách nhau 1
+
+
+def camelot_distance(num_a: np.ndarray, letter_a: np.ndarray, num_b: np.ndarray, letter_b: np.ndarray) -> np.ndarray:
+    """Khoảng cách trên vòng Camelot: số bước theo số (0–6, 12 ↔ 1 liền nhau) cộng 1 nếu khác chữ A/B; trong 0–7."""
+    return _wheel_step(num_a, num_b) + (letter_a != letter_b).astype(int)
 
 
 def same_key(num_a: np.ndarray, letter_a: np.ndarray, num_b: np.ndarray, letter_b: np.ndarray) -> np.ndarray:
