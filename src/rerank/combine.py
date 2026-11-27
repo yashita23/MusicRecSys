@@ -6,6 +6,7 @@ thứ tự ứng viên. Nhờ vậy điểm mix học (#23) cắm vào được 
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
@@ -23,17 +24,53 @@ def gu_norm(taste_scores: Sequence[float] | np.ndarray) -> np.ndarray:
     return np.ones_like(x) if span == 0 else (x - x.min()) / span
 
 
-def _check_inputs(ids: list[str], taste: np.ndarray, alpha: float, k: int | None) -> None:
+def _check_inputs(ids: list[str], taste: np.ndarray, alpha: float) -> None:
     if not 0.0 <= alpha <= 1.0:
         raise ValueError(f"α phải trong khoảng 0–1, đang là {alpha}")
-    if k is not None and k < 1:
-        raise ValueError(f"k phải ≥ 1 (hoặc None để lấy cả danh sách), đang là {k}")
     if taste.shape != (len(ids),):
         raise ValueError(f"điểm gu phải có đúng {len(ids)} giá trị, đang có shape {taste.shape}")
     if not np.isfinite(taste).all():
         raise ValueError(f"điểm gu phải hữu hạn, có {int((~np.isfinite(taste)).sum())} giá trị NaN/inf")
     if len(set(ids)) != len(ids):
         raise ValueError(f"ứng viên bị trùng: {len(ids) - len(set(ids))} bài xuất hiện nhiều lần")
+
+
+@dataclass(frozen=True)
+class ScoredCandidates:
+    """Điểm của từng ứng viên một phiên, theo đúng thứ tự ứng viên đưa vào."""
+
+    track_ids: list[str]
+    taste: np.ndarray
+    gu_norm: np.ndarray
+    mix: np.ndarray
+    final: np.ndarray  # điểm cuối = α·gu_norm + (1 − α)·mix
+
+    def best(self) -> str:
+        """Ứng viên có điểm cuối cao nhất; hòa thì lấy ứng viên đứng trước, như thứ tự ổn định của rerank."""
+        return self.track_ids[int(np.argmax(self.final))]
+
+
+def score_candidates(
+    candidate_ids: Sequence[str],
+    taste_scores: Sequence[float] | np.ndarray,
+    current_track_id: str,
+    mix: MixScorer,
+    alpha: float,
+) -> ScoredCandidates:
+    """Chấm gu_norm, điểm mix và điểm cuối cho các ứng viên của một phiên (kiểm tra đầu vào như rerank).
+
+    Dùng trực tiếp khi chỉ cần top-1 (sinh chuỗi #18) để khỏi dựng DataFrame ở mỗi bước.
+    """
+    ids = list(candidate_ids)
+    taste = np.asarray(taste_scores, dtype=float)
+    _check_inputs(ids, taste, alpha)
+    mix_scores = np.asarray(mix(current_track_id, ids), dtype=float)
+    if mix_scores.shape != (len(ids),):
+        raise ValueError(f"hàm điểm mix phải trả về mảng đúng độ dài {len(ids)} ứng viên, đang có shape {mix_scores.shape}")
+    if not np.isfinite(mix_scores).all():
+        raise ValueError(f"điểm mix phải hữu hạn, có {int((~np.isfinite(mix_scores)).sum())} giá trị NaN/inf")
+    norm = gu_norm(taste)
+    return ScoredCandidates(ids, taste, norm, mix_scores, alpha * norm + (1 - alpha) * mix_scores)
 
 
 def rerank(
@@ -48,22 +85,18 @@ def rerank(
 
     Cột: rank (1…), track_id, taste_score, gu_norm, mix, final. Hòa điểm cuối thì giữ thứ tự ứng viên đầu vào.
     """
-    ids = list(candidate_ids)
-    taste = np.asarray(taste_scores, dtype=float)
-    _check_inputs(ids, taste, alpha, k)
-    mix_scores = np.asarray(mix(current_track_id, ids), dtype=float)
-    if mix_scores.shape != (len(ids),):
-        raise ValueError(f"hàm điểm mix phải trả về mảng đúng độ dài {len(ids)} ứng viên, đang có shape {mix_scores.shape}")
-    if not np.isfinite(mix_scores).all():
-        raise ValueError(f"điểm mix phải hữu hạn, có {int((~np.isfinite(mix_scores)).sum())} giá trị NaN/inf")
-    norm = gu_norm(taste)
+    if not 0.0 <= alpha <= 1.0:  # kiểm tra α trước k, như trước khi tách score_candidates
+        raise ValueError(f"α phải trong khoảng 0–1, đang là {alpha}")
+    if k is not None and k < 1:
+        raise ValueError(f"k phải ≥ 1 (hoặc None để lấy cả danh sách), đang là {k}")
+    scored = score_candidates(candidate_ids, taste_scores, current_track_id, mix, alpha)
     out = pd.DataFrame(
         {
-            "track_id": ids,
-            "taste_score": taste,
-            "gu_norm": norm,
-            "mix": mix_scores,
-            "final": alpha * norm + (1 - alpha) * mix_scores,
+            "track_id": scored.track_ids,
+            "taste_score": scored.taste,
+            "gu_norm": scored.gu_norm,
+            "mix": scored.mix,
+            "final": scored.final,
         }
     )
     out = out.sort_values("final", ascending=False, kind="stable").head(k if k is not None else len(out))
