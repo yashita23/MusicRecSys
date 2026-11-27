@@ -16,7 +16,15 @@ class Popularity:
     name = "popularity"
 
     def fit(self, sessions: pd.DataFrame) -> Popularity:
-        counts = count_train_occurrences(sessions)
+        return self._from_counts(count_train_occurrences(sessions))
+
+    @classmethod
+    def from_tracks(cls, tracks: pd.DataFrame) -> Popularity:
+        """Từ cột n_occurrences (số lượt trong train) của tracks: giống fit(sessions) mà không cần sessions (app, #20)."""
+        counts = tracks.set_index("track_id")["n_occurrences"]
+        return cls()._from_counts(counts[counts > 0])
+
+    def _from_counts(self, counts: pd.Series) -> Popularity:
         counts = counts.rename_axis("track_id").reset_index(name="n").sort_values(["n", "track_id"], ascending=[False, True])
         self.ids = counts["track_id"].to_numpy()
         self.scores = counts["n"].to_numpy(dtype=float)
