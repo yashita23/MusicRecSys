@@ -1,0 +1,90 @@
+% Đề xuất đề tài MixNext (ticket #10, spec §14). Biên dịch: tectonic reports/proposal.tex  (hoặc xelatex trên Overleaf)
+\documentclass[11pt,a4paper]{article}
+\usepackage[a4paper,hmargin=2cm,vmargin=1.5cm]{geometry}
+\usepackage{amsmath}
+\usepackage{fontspec}
+\setmainfont{texgyretermes}[Extension=.otf, UprightFont=*-regular, BoldFont=*-bold,
+  ItalicFont=*-italic, BoldItalicFont=*-bolditalic]  % theo tên file: chạy được cả Tectonic lẫn Overleaf, có đủ dấu tiếng Việt
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage[hidelinks]{hyperref}
+
+\setlist{nosep,leftmargin=1.4em}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.45em}
+\pagestyle{empty}
+
+\newcommand{\muc}[1]{\par\vspace{0.5em}{\large\bfseries #1}\par\vspace{0.15em}}
+
+\begin{document}
+
+\begin{center}
+  {\small ĐỀ XUẤT ĐỀ TÀI BÀI TẬP LỚN · MÔN IT4613 · 11/2026}\\[0.5em]
+  {\LARGE\bfseries MixNext}\\[0.3em]
+  {\large Gợi ý bài hát tiếp theo vừa hợp gu vừa chuyển bài mượt}\\[0.2em]
+  {\itshape Transition-aware Playlist Continuation}
+\end{center}
+
+\muc{1. Bài toán thực tế}
+Khi nghe nhạc liên tục, như tính năng tự phát tiếp của ứng dụng nghe nhạc, nhạc nền ở quán cà phê, buổi tiệc hay phòng tập,
+hệ thống chọn bài tiếp theo chủ yếu theo gu. Bài kế tiếp có thể hợp gu nhưng chênh nhịp, lệch tông hoặc tụt năng lượng
+đột ngột, làm mạch nghe bị đứt. Đây là bài toán \emph{automatic playlist continuation} (RecSys Challenge 2018) với thêm một
+mục tiêu thứ hai: bài tiếp theo phải nối được với bài đang phát.
+
+\begin{itemize}
+  \item \textbf{Mục đích:} gợi ý bài tiếp theo vừa đúng gu của phiên nghe, vừa nối mượt với bài đang phát; đo xem muốn
+        chuyển bài mượt hơn thì phải trả giá bao nhiêu độ chính xác.
+  \item \textbf{Yêu cầu:} gợi ý ngay từ vài bài đầu của phiên; mỗi gợi ý có lý do; người dùng chỉnh được mức ưu tiên giữa
+        “đúng gu” và “mượt”; ứng dụng demo chạy trên laptop, không cần mạng.
+  \item \textbf{Kịch bản:} người dùng chọn vài bài đang nghe; hệ thống trả hàng đợi 10 bài, mỗi bài kèm lý do như
+        “cùng tông 8A, BPM 124 lên 126”, và người dùng tự chọn bài phát tiếp từ hàng đợi. Khi mở nhạc cho buổi tiệc,
+        người dùng kéo thanh trượt về phía “mượt” và hàng đợi thay đổi ngay.
+\end{itemize}
+
+\muc{2. Phương pháp dự kiến}
+Hệ gợi ý lai hai tầng.
+\begin{itemize}
+  \item \textbf{Tầng 1 — điểm gu:} ba mô hình gu học từ dữ liệu playlist sinh 100 ứng viên cho phiên: lọc cộng tác ALS
+        trên ma trận playlist × bài, item2vec, và mô hình tuần tự SASRec. So với hai baseline: Popularity và
+        item-kNN liền kề (bài hay đứng ngay sau bài đang phát trong các playlist).
+  \item \textbf{Tầng 2 — điểm mix:} xếp lại ứng viên theo điểm mix với bài đang phát. Có hai cách tính:
+        (a) điểm mix theo luật DJ: độ lệch BPM (kể cả nhịp gấp đôi/một nửa), vòng tông Camelot, chênh lệch năng lượng;
+        (b) điểm mix học: hai bộ mã hóa học từ các cặp bài liền nhau trong playlist bằng học tương phản (InfoNCE).
+  \item \textbf{Kết hợp:} điểm cuối $= \alpha \cdot \text{điểm gu (chuẩn hóa)} + (1-\alpha) \cdot \text{điểm mix}$,
+        $\alpha \in [0, 1]$. Trọng số của điểm mix theo luật và $\alpha$ chọn bằng grid search trên tập validation:
+        tỉ lệ cặp mix được cao nhất mà NDCG@10 giảm không quá 10\%.
+  \item \textbf{Đánh giá:} độ chính xác bằng HitRate@10, NDCG@10, MRR; độ mượt trên chuỗi 10 bài bằng độ lệch BPM
+        trung bình, tỉ lệ chuyển tông hợp và độ lệch năng lượng trung bình; cùng tỉ lệ cặp mix được. Kết quả chính là
+        \textbf{đường đánh đổi} giữa độ chính xác và độ mượt khi thay đổi $\alpha$, bảng kết quả 3 lần chạy với
+        \texttt{random\_seed} khác nhau, ablation từng thành phần điểm mix và so sánh luật với điểm mix học.
+\end{itemize}
+
+\muc{3. Dữ liệu}
+Spotify Million Playlist Dataset (RecSys Challenge 2018; bản gốc đã bị gỡ nên dùng bản sao không chính thức trên Kaggle,
+\texttt{himanshuwagh/spotify-million}), ghép với
+đặc trưng âm thanh (tempo, tông, mode, năng lượng) từ một bộ dữ liệu công khai khoảng 2 triệu bài của MPD theo mã bài hát.
+Mỗi playlist là một phiên nghe. Từ khoảng 100 nghìn playlist lấy mẫu, bỏ các bài không có đặc trưng hoặc xuất hiện dưới
+5 lượt, bỏ các phiên còn dưới 10 bài, còn khoảng 92 nghìn phiên; chia train/validation/test 80/10/10 theo phiên. Khi đánh giá,
+5 bài đầu của phiên là seed và bài thứ 6 là bài đích.
+
+\muc{4. Đầu vào và đầu ra}
+\begin{itemize}
+  \item \textbf{Đầu vào:} danh sách một hoặc vài bài đang nghe (seed); tham số $\alpha$ từ 0 đến 1; số bài cần gợi ý $K$.
+  \item \textbf{Đầu ra:} danh sách $K$ bài xếp hạng, mỗi bài có điểm gu, điểm mix và một dòng giải thích. Ở chế độ so sánh:
+        chuỗi $K$ bài liên tiếp kèm biểu đồ BPM và năng lượng theo thứ tự bài, đặt cạnh chuỗi chỉ theo gu.
+\end{itemize}
+
+\muc{5. Thành viên}
+\begin{tabularx}{\linewidth}{@{}p{0.3\linewidth}p{0.25\linewidth}X@{}}
+  \toprule
+  \textbf{Họ tên} & \textbf{Mã số sinh viên} & \textbf{Email} \\
+  \midrule
+  Nguyễn Hoàng Vũ  & 20235251 & \href{mailto:vu.nh235251@sis.hust.edu.vn}{vu.nh235251@sis.hust.edu.vn} \\
+  Bùi Công Hoan    & 20235083 & \href{mailto:hoan.bc235083@sis.hust.edu.vn}{hoan.bc235083@sis.hust.edu.vn} \\
+  Nguyễn Công Minh & 20235161 & \href{mailto:minh.nc235161@sis.hust.edu.vn}{minh.nc235161@sis.hust.edu.vn} \\
+  \bottomrule
+\end{tabularx}
+
+\end{document}

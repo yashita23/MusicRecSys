@@ -15,7 +15,7 @@ notebooks/       # chạy trên Kaggle: clone repo rồi gọi hàm trong src/; 
 tests/           # pytest
 app/             # app Streamlit: main.py (giao diện), player.py (hàng đợi theo α), config.toml (đường dẫn dữ liệu)
 artifacts/       # file cho app, lấy từ Kaggle, không commit
-reports/         # hình và bảng kết quả
+reports/         # đề xuất đề tài, hình và bảng kết quả
 data/            # dữ liệu ở máy (raw, processed), không commit
 ```
 
