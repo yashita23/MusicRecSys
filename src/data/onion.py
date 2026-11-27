@@ -5,6 +5,7 @@ Dataset", CIKM 2022. Zenodo record 15394646, DOI 10.5281/zenodo.15394646, giấy
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import shutil
@@ -22,16 +23,19 @@ RECORD = 15394646
 EVENTS_FILE = "userid_trackid_timestamp.tsv.bz2"
 ESSENTIA_FILE = "id_essentia.tsv.bz2"
 README_FILE = "README.md"
-# md5 theo trang Zenodo của record (kiểm ngày 27/11/2026)
-ZENODO_MD5 = {
+# md5 hai file dữ liệu theo API Zenodo của record (kiểm ngày 27/11/2026); README tải kèm nhưng không kiểm md5
+DATA_MD5 = {
     EVENTS_FILE: "dfe82201036765f7463e6f3ce3d0f991",   # 2.211.449.511 byte
     ESSENTIA_FILE: "6222143003c2cfa0b250dd80a92ac929",  # 407.458.247 byte
-    README_FILE: "df379ed27dcefe5652b8db4e6783e304",
 }
 EXPECTED = {"events_rows": 252_984_396, "events_users": 119_140, "essentia_tracks": 109_269}  # theo README của record
+BLOCKING_CHECKS = ("events_rows", "essentia_tracks")  # tiêu chí #54; số user chỉ ghi lại
+RETRIES = 3
+TIMEOUT_SECONDS = 120
 
 
 def zenodo_url(name: str) -> str:
+    """Link tải trực tiếp một file của record trên Zenodo."""
     return f"https://zenodo.org/api/records/{RECORD}/files/{name}/content"
 
 
@@ -96,11 +100,12 @@ def convert_essentia(src: str | Path, out: str | Path) -> dict:
     header = pd.read_csv(src, sep="\t", nrows=0).columns.tolist()
     columns = essentia_columns(header)
     table = pd.read_csv(src, sep="\t", usecols=columns, dtype={c: ("string" if c == "id" else "float32") for c in columns})
-    table[columns].to_parquet(out, index=False)
+    table[columns].to_parquet(out, index=False)  # usecols giữ thứ tự cột của file gốc; chọn lại để theo thứ tự essentia_columns
     return {"rows": len(table), "tracks": int(table["id"].nunique()), "columns": len(columns)}
 
 
 def md5sum(path: str | Path, block: int = 1 << 24) -> str:
+    """md5 của một file, đọc theo khối 16 MB."""
     digest = hashlib.md5()
     with open(path, "rb") as f:
         while chunk := f.read(block):
@@ -108,39 +113,66 @@ def md5sum(path: str | Path, block: int = 1 << 24) -> str:
     return digest.hexdigest()
 
 
-def download(url: str, path: Path) -> None:
-    """Tải theo luồng vào path (qua file tạm, nên lần tải dở không để lại file hỏng)."""
+def download(url: str, path: Path, retries: int = RETRIES, timeout: float = TIMEOUT_SECONDS) -> None:
+    """Tải theo luồng vào path qua file .part; thử lại khi lỗi mạng hoặc thiếu byte so với Content-Length.
+
+    timeout áp cho từng lần chờ dữ liệu, nên tải treo sẽ báo lỗi thay vì treo cả phiên Kaggle.
+    """
     partial = path.with_name(path.name + ".part")
-    with urllib.request.urlopen(url) as response, open(partial, "wb") as f:
-        shutil.copyfileobj(response, f, length=1 << 24)
-    partial.replace(path)
+    for attempt in range(1, retries + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as response, open(partial, "wb") as f:
+                shutil.copyfileobj(response, f, length=1 << 24)
+                size = response.headers.get("Content-Length")
+            if size is not None and partial.stat().st_size != int(size):
+                raise OSError(f"tải {path.name} được {partial.stat().st_size} byte, Content-Length {size}")
+            partial.replace(path)
+            return
+        except OSError as err:  # gồm URLError, timeout
+            partial.unlink(missing_ok=True)
+            if attempt == retries:
+                raise OSError(f"tải {path.name} thất bại sau {retries} lần: {err}") from err
+
+
+def fetch(name: str, work: Path, url_for: Callable[[str], str], expected_md5: str | None) -> str:
+    """Bảo đảm work/name có mặt; trả về md5. File đã có và đúng md5 thì không tải lại (chỉ băm một lần).
+
+    expected_md5 None (README): không kiểm, chỉ trả md5 để ghi log.
+    """
+    path = work / name
+    if path.exists():
+        actual = md5sum(path)
+        if expected_md5 is None or actual == expected_md5:
+            return actual
+    download(url_for(name), path)
+    actual = md5sum(path)
+    if expected_md5 is not None and actual != expected_md5:
+        raise ValueError(f"md5 của {name} là {actual}, Zenodo ghi {expected_md5}: tải lại hoặc kiểm tra record")
+    return actual
 
 
 def run_import(
     work_dir: str | Path,
     out_dir: str | Path,
-    md5: dict[str, str] = ZENODO_MD5,
+    data_md5: dict[str, str] = DATA_MD5,
     url_for: Callable[[str], str] = zenodo_url,
+    expected: dict[str, int] = EXPECTED,
 ) -> dict:
-    """Tải ba file vào work_dir (trên Kaggle: /tmp, không phải /kaggle/working), kiểm md5 cả ba,
-    rồi mới ghi vào out_dir: listening_events.parquet, essentia.parquet, README.md, import_log.json.
+    """Tải hai file dữ liệu và README vào work_dir (trên Kaggle: /tmp, không phải /kaggle/working), kiểm md5 hai
+    file dữ liệu, rồi mới ghi vào out_dir: listening_events.parquet, essentia.parquet, README.md, import_log.json.
 
-    File đã có trong work_dir và đúng md5 thì không tải lại. md5 sai → ValueError, không ghi gì vào out_dir.
+    md5 sai → ValueError, không ghi gì vào out_dir. Số lượt nghe hoặc số bài Essentia khác README của record
+    → ValueError, không ghi import_log.json (output coi như chưa xong). Số user lệch chỉ ghi lại.
     """
     work, out = Path(work_dir), Path(out_dir)
     work.mkdir(parents=True, exist_ok=True)
-    for name, expected in md5.items():
-        path = work / name
-        if not path.exists() or md5sum(path) != expected:
-            download(url_for(name), path)
-        actual = md5sum(path)
-        if actual != expected:
-            raise ValueError(f"md5 của {name} là {actual}, Zenodo ghi {expected}: tải lại hoặc kiểm tra record")
+    md5 = {name: fetch(name, work, url_for, data_md5[name]) for name in (EVENTS_FILE, ESSENTIA_FILE)}
+    md5[README_FILE] = fetch(README_FILE, work, url_for, None)  # README có thể được sửa trên Zenodo: không chặn
 
     out.mkdir(parents=True, exist_ok=True)
     log = {
         "source": f"Zenodo record {RECORD}, DOI 10.5281/zenodo.{RECORD}, CC BY 4.0",
-        "md5": dict(md5),
+        "md5": md5,
         "events": convert_events(work / EVENTS_FILE, out / "listening_events.parquet"),
         "essentia": convert_essentia(work / ESSENTIA_FILE, out / "essentia.parquet"),
     }
@@ -149,15 +181,16 @@ def run_import(
         "events_users": log["events"]["users"],
         "essentia_tracks": log["essentia"]["tracks"],
     }
-    log["check"] = {key: {"expected": EXPECTED[key], "actual": actual[key], "ok": actual[key] == EXPECTED[key]} for key in EXPECTED}
+    log["check"] = {key: {"expected": expected[key], "actual": actual[key], "ok": actual[key] == expected[key]} for key in expected}
+    wrong = [key for key in BLOCKING_CHECKS if not log["check"][key]["ok"]]
+    if wrong:
+        raise ValueError(f"lệch với README của record ở {', '.join(wrong)}: {[log['check'][k] for k in wrong]}")
     shutil.copyfile(work / README_FILE, out / "README.md")
     (out / "import_log.json").write_text(json.dumps(log, ensure_ascii=False, indent=2), encoding="utf-8")
     return log
 
 
 def main(argv: list[str] | None = None) -> dict:
-    import argparse
-
     ap = argparse.ArgumentParser(description="Nhập Music4All-Onion từ Zenodo thành parquet (#54)")
     ap.add_argument("--work", default="/tmp/onion", help="Thư mục tải file gốc (không nằm trong output)")
     ap.add_argument("--out", required=True, help="Thư mục ra, ví dụ /kaggle/working/out/onion")

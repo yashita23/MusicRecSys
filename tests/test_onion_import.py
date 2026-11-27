@@ -1,3 +1,4 @@
+"""Nhập Music4All-Onion (last.fm) từ Zenodo thành parquet (ticket #54): chọn cột Essentia, đổi lượt nghe, luồng tải + md5."""
 import bz2
 import hashlib
 import json
@@ -65,21 +66,30 @@ def essentia_tsv() -> str:
 
 @pytest.fixture
 def zenodo(tmp_path):
-    """Ba file nguồn tự dựng, phục vụ qua URL file://, kèm md5 đúng."""
+    """Ba file nguồn tự dựng, phục vụ qua URL file://, kèm md5 đúng của hai file dữ liệu."""
     src = tmp_path / "zenodo"
     src.mkdir()
     (src / EVENTS_FILE).write_bytes(bz2.compress(EVENTS.encode()))
     (src / ESSENTIA_FILE).write_bytes(bz2.compress(essentia_tsv().encode()))
-    (src / README_FILE).write_text("# Music4All-Onion\nCC BY 4.0\n", encoding="utf-8")
-    md5 = {name: hashlib.md5((src / name).read_bytes()).hexdigest() for name in (EVENTS_FILE, ESSENTIA_FILE, README_FILE)}
-    return src, md5
+    (src / README_FILE).write_text("# Music4All-Onion" + chr(10) + "CC BY 4.0" + chr(10), encoding="utf-8")
+    data_md5 = {name: hashlib.md5((src / name).read_bytes()).hexdigest() for name in (EVENTS_FILE, ESSENTIA_FILE)}
+    return src, data_md5
+
+
+# Số liệu đúng của dữ liệu tự dựng: 5 lượt nghe, 2 user, 2 bài Essentia
+FAKE_EXPECTED = {"events_rows": 5, "events_users": 2, "essentia_tracks": 2}
+
+
+def run_fake(src, tmp_path, **overrides):
+    kwargs = {"url_for": lambda name: (src / name).as_uri(), "expected": FAKE_EXPECTED, **overrides}
+    return run_import(tmp_path / "work", tmp_path / "out" / "onion", **kwargs)
 
 
 def test_import_downloads_checks_md5_converts_and_logs(zenodo, tmp_path):
-    src, md5 = zenodo
-    out = tmp_path / "out" / "onion"
-    log = run_import(tmp_path / "work", out, md5=md5, url_for=lambda name: (src / name).as_uri())
+    src, data_md5 = zenodo
+    log = run_fake(src, tmp_path, data_md5=data_md5)
 
+    out = tmp_path / "out" / "onion"
     events = pd.read_parquet(out / "listening_events.parquet")
     essentia = pd.read_parquet(out / "essentia.parquet")
     assert len(events) == 5
@@ -88,14 +98,29 @@ def test_import_downloads_checks_md5_converts_and_logs(zenodo, tmp_path):
     assert (out / "README.md").read_text(encoding="utf-8").startswith("# Music4All-Onion")
 
     assert json.loads((out / "import_log.json").read_text(encoding="utf-8")) == log
-    assert log["md5"] == md5
+    assert {name: log["md5"][name] for name in data_md5} == data_md5
+    assert log["md5"][README_FILE] == hashlib.md5((src / README_FILE).read_bytes()).hexdigest()  # ghi lại, không chặn
     assert log["events"]["rows"] == 5 and log["events"]["users"] == 2
     assert log["essentia"] == {"rows": 2, "tracks": 2, "columns": len(WANTED) + 36}
+    assert all(check["ok"] for check in log["check"].values())
 
 
-def test_a_wrong_md5_stops_the_import_before_writing_any_output(zenodo, tmp_path):
-    src, md5 = zenodo
-    out = tmp_path / "out" / "onion"
+def test_a_wrong_data_md5_stops_the_import_before_writing_any_output(zenodo, tmp_path):
+    src, data_md5 = zenodo
     with pytest.raises(ValueError, match=f"md5.*{ESSENTIA_FILE}|{ESSENTIA_FILE}.*md5"):
-        run_import(tmp_path / "work", out, md5={**md5, ESSENTIA_FILE: "0" * 32}, url_for=lambda name: (src / name).as_uri())
+        run_fake(src, tmp_path, data_md5={**data_md5, ESSENTIA_FILE: "0" * 32})
+    out = tmp_path / "out" / "onion"
     assert not out.exists() or not any(out.iterdir())
+
+
+def test_a_row_count_that_differs_from_the_zenodo_readme_fails_without_a_log(zenodo, tmp_path):
+    src, data_md5 = zenodo
+    with pytest.raises(ValueError, match="events_rows"):
+        run_fake(src, tmp_path, data_md5=data_md5, expected={**FAKE_EXPECTED, "events_rows": 6})
+    assert not (tmp_path / "out" / "onion" / "import_log.json").exists()
+
+
+def test_a_differing_user_count_is_logged_but_does_not_block(zenodo, tmp_path):
+    src, data_md5 = zenodo
+    log = run_fake(src, tmp_path, data_md5=data_md5, expected={**FAKE_EXPECTED, "events_users": 3})
+    assert log["check"]["events_users"] == {"expected": 3, "actual": 2, "ok": False}
