@@ -166,15 +166,26 @@ Mỗi mô hình có index riêng và chỉ chứa những bài nó đã học đ
 
 ## artifacts/
 
-Mọi file app đọc (#20), do `python -m src.export_artifacts` ghi ra; app đọc bằng `load_artifacts` trong `src/export_artifacts.py`, chỉ cần numpy và pandas.
+Mọi file app đọc (#20), do `python -m src.export_artifacts` ghi ra; app đọc bằng `load_artifacts` trong `src/export_artifacts.py`, chỉ cần numpy và pandas. Bên ghi (#20) và bên đọc (app, #21, #28) đều là của C, nên luật "sửa cả ba nơi" ở đầu tài liệu không áp dụng: định dạng định nghĩa và kiểm tra trong `src/export_artifacts.py` (`load_artifacts` kiểm tra `tracks`, vector và index khớp nhau) và `tests/test_export_artifacts.py`. Riêng `mix_params.json` có bên ghi thứ hai là #25 (B), nên định dạng của nó ghi ở đây.
 
 - `tracks.parquet`: schema `tracks`, gồm mọi bài có vector và mọi bài của playlist demo.
 - `item_embeddings.npy`, `track_index.parquet`: như `item_embeddings/{model}.npy` và `{model}_tracks.parquet` của mô hình được chọn (ALS hoặc item2vec, NDCG@10 val cao nhất trong `{model}_params.json`), thứ tự hàng giữ như file gốc. Mọi bài trong `track_index` có trong `tracks.parquet`.
 - `demo_playlists.parquet`: `session_id`, `seed_track_ids`, `target_track_id` của 100 phiên test chọn theo `random_seed` 42 (như `eval_targets`, bỏ cột `split`).
-- `manifest.json`: `model`, `decay`, `mix_weights` (`bpm`, `key`, `energy` của điểm mix theo luật), `mix_learned` (có `mix_learned.npz` hay không), `params`, `val_ndcg` (theo mô hình), số bài, `n_dropped` (số bài có vector bị cắt để dưới 200 MB).
-- `mix_learned.npz`: chép nguyên từ `mixnext-mix-learned`, xem mục `mix_learned.npz`.
+- `mix_params.json`: cấu hình mix app dùng (`MixParams`). Có file này trong `--input` (ví dụ output của #25) thì chép theo; không có thì ghi giá trị mặc định: trọng số của #12 và α = 0,7 của #19 (`reports/sweep_v1.csv`).
 
-Phiên không có bài nào có vector thì app lấy ứng viên từ Popularity dựng theo cột `n_occurrences` của `tracks.parquet`, cho cùng kết quả với Popularity học trên các phiên train (khi danh mục không bị cắt).
+  ```json
+  {"rule": {"weights": {"bpm": 0.4, "key": 0.4, "energy": 0.2}, "alpha": 0.7},
+   "learned": {"alpha": null},
+   "source": "mặc định: trọng số của #12, α của #19 (reports/sweep_v1.csv)"}
+  ```
+
+  `learned.alpha` là α của điểm mix học (#25 chọn; `null` thì app dùng `rule.alpha`). Mọi α trong 0–1.
+- `mix_learned.npz`: chép từ `mixnext-mix-learned` nếu có, xem mục `mix_learned.npz`. Không có thì file cũ trong thư mục ra bị xóa.
+- `manifest.json`: báo cáo, không phải cấu hình. `model`, `decay`, `mix_learned` (có `mix_learned.npz` hay không), `n_tracks`, `n_tracks_in_index`, `dim`, `n_demo`, `params` (tham số đã chọn của mô hình), `val_ndcg` (NDCG@10 val tốt nhất theo mô hình), `random_seed`, `n_tracks_with_vector`, `n_dropped` (số bài có vector bị cắt), `bytes` (tổng dung lượng các file dữ liệu).
+
+Tổng dung lượng phải dưới 200 MB (200.000.000 byte). Script cắt danh mục theo dung lượng ước lượng (bỏ bài ít lượt nhất, giữ bài của playlist demo), rồi kiểm tra dung lượng thật sau khi ghi và báo lỗi nếu vẫn vượt.
+
+Phiên không có bài nào có vector thì app lấy ứng viên từ Popularity dựng theo cột `n_occurrences` của `tracks.parquet`, cho cùng kết quả với Popularity học trên các phiên train (khi danh mục không bị cắt). Playlist baseline của demo (#28) là chuỗi với α = 1, tính được từ chính các file này.
 
 ## File trung gian của A
 

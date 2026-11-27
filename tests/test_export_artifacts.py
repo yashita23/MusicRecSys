@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from src.data.fake import make_fake_dataset
-from src.export_artifacts import build_artifacts, demo_playlists, load_artifacts, write_artifacts
+from src.export_artifacts import build_artifacts, demo_playlists, demo_track_ids, load_artifacts, write_artifacts
 from src.models.popularity import Popularity
 from src.models.session import SessionVectorTaste
 from src.rerank.mix_learned import FEATURE_NAMES, MixEncoders
@@ -20,14 +20,14 @@ def fake():
     return make_fake_dataset(n_sessions=200, n_tracks=400, random_seed=7)
 
 
-def export(fake, **kwargs):
+def build_fake(fake, **kwargs):
     vectors, index = fake.embeddings["fake"]
     demo = demo_playlists(fake.eval_targets, n=10)
     return build_artifacts(fake.tracks, vectors, index["track_id"], model="fake", decay=DECAY, demo=demo, **kwargs)
 
 
 def test_loaded_artifacts_give_the_same_candidates_as_the_original_model(fake, tmp_path):
-    write_artifacts(export(fake), tmp_path)
+    write_artifacts(build_fake(fake), tmp_path)
     loaded = load_artifacts(tmp_path).taste_model()
 
     vectors, index = fake.embeddings["fake"]
@@ -43,12 +43,12 @@ def test_loaded_artifacts_give_the_same_candidates_as_the_original_model(fake, t
 
 
 def test_cutting_the_catalog_keeps_demo_tracks_and_the_most_played_tracks(fake):
-    full = export(fake)
-    cut = export(fake, max_bytes=full.nbytes // 4)
+    full = build_fake(fake)
+    cut = build_fake(fake, max_bytes=full.nbytes // 4)
     assert cut.nbytes <= full.nbytes // 4
     assert len(cut.track_index) < len(full.track_index)
 
-    demo_tracks = {t for seed in cut.demo["seed_track_ids"] for t in seed} | set(cut.demo["target_track_id"])
+    demo_tracks = demo_track_ids(cut.demo)
     assert demo_tracks <= set(cut.tracks["track_id"])
     assert demo_tracks & set(full.track_index["track_id"]) <= set(cut.track_index["track_id"])  # bài demo có vector giữ vector
     assert set(cut.track_index["track_id"]) <= set(cut.tracks["track_id"])
@@ -66,8 +66,7 @@ def test_app_loads_artifacts_without_torch(fake, tmp_path):
     rng = np.random.default_rng(0)
     layer = lambda n_out, n_in: (rng.normal(size=(n_out, n_in)).astype(np.float32), np.zeros(n_out, np.float32))  # noqa: E731
     encoders = MixEncoders([layer(8, len(FEATURE_NAMES)), layer(4, 8)], [layer(8, len(FEATURE_NAMES)), layer(4, 8)], 0.1)
-    encoders.save(tmp_path / "mix.npz")
-    write_artifacts(export(fake), tmp_path / "artifacts", mix_learned=tmp_path / "mix.npz")
+    write_artifacts(build_fake(fake, mix_learned=encoders), tmp_path / "artifacts")
 
     script = (
         "import sys\n"
