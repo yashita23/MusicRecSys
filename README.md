@@ -9,7 +9,7 @@ src/
 ├── data/        # ghép, lọc, chia train/val/test; schema và dữ liệu giả
 ├── features/    # BPM, Camelot, energy
 ├── models/      # baseline (popularity, item_knn), mô hình gu (als, item2vec, sasrec/), vector phiên (session), embedding_runner (chọn tham số, CLI)
-├── rerank/      # điểm mix theo luật (mix_rule), điểm mix học (mix_learned; huấn luyện ở mix_learned_train), xếp lại theo α (combine)
+├── rerank/      # điểm mix theo luật (mix_rule), điểm mix học (mix_learned; huấn luyện ở mix_learned_train), so sánh hai điểm (mix_compare), xếp lại theo α (combine)
 └── eval/        # độ chính xác (accuracy, run), độ mượt (smoothness)
 notebooks/       # chạy trên Kaggle: clone repo rồi gọi hàm trong src/; template.ipynb là notebook mẫu
 tests/           # pytest
@@ -57,6 +57,7 @@ Mỗi notebook clone repo từ GitHub và gọi hàm trong `src/`. Từ notebook
 | `06_item2vec` | #15 | `titeohihi/mixnext-splited` | Dataset `mixnext-item2vec`: ứng viên, embedding và `item2vec_params.json` của item2vec |
 | `07_sasrec` | #16 | `titeohihi/mixnext-splited` | Dataset `mixnext-sasrec`: ứng viên, checkpoint và báo cáo huấn luyện của SASRec. Cần **GPU** |
 | `08_mix_learned` | #23 | `titeohihi/mixnext-splited` | Dataset `mixnext-mix-learned`: trọng số numpy của điểm mix học (`mix_learned.npz`) và báo cáo huấn luyện (`mix_learned.json`) |
+| `12_learned_vs_rule` | #24 | `titeohihi/mixnext-splited`, `mixnext-mix-learned` | Không đăng Dataset: hình và bảng so sánh điểm mix học với luật cho báo cáo (`out/learned_vs_rule/`) |
 
 Bật Internet ở mọi notebook (để clone repo và `pip install`). Chỉ cần CPU, trừ notebook 07 (SASRec) cần GPU. Các Dataset đều để **Private** vì sinh từ MPD.
 
