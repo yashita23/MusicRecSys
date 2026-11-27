@@ -6,6 +6,7 @@ import pytest
 from src.data.fake import make_fake_dataset
 from src.models.item_knn import ItemKNN
 from src.models.popularity import Popularity
+from src.models.session import SessionVectorTaste
 from src.rerank.generate import generate_chains
 from src.rerank.mix_rule import RuleMix
 
@@ -51,10 +52,10 @@ class BatchOnlyTaste(RankedTaste):
         super().__init__()
         self.batch_sizes: list[int] = []
 
-    def candidates(self, session_track_ids, k=100):
+    def candidates(self, session_track_ids: Sequence[str], k: int = 100) -> tuple[list[str], np.ndarray]:
         raise AssertionError("mô hình có candidates_batch thì phải được chấm theo lô")
 
-    def candidates_batch(self, sessions, k=100):
+    def candidates_batch(self, sessions: Sequence[Sequence[str]], k: int = 100) -> list[tuple[list[str], np.ndarray]]:
         self.batch_sizes.append(len(sessions))
         return [RankedTaste.candidates(self, s, k) for s in sessions]
 
@@ -74,10 +75,20 @@ def test_each_step_asks_the_taste_model_with_the_session_grown_so_far():
 
 
 
-@pytest.mark.parametrize("model_cls", [Popularity, ItemKNN], ids=["popularity", "itemknn"])
-def test_real_baselines_generate_full_chains_without_repeats(model_cls):
+def build_model(name: str, data):
+    train = data.sessions[data.sessions["split"] == "train"]
+    if name == "session_vector":  # khung chung của ALS và item2vec, dùng embedding giả của fake.py
+        vectors, index = data.embeddings["fake"]
+        return SessionVectorTaste("fake", vectors, index["track_id"].tolist(), decay=0.5, fallback=Popularity().fit(train))
+    if name == "itemknn":
+        return ItemKNN().fit(train)
+    return Popularity().fit(train)
+
+
+@pytest.mark.parametrize("name", ["popularity", "itemknn", "session_vector"])
+def test_real_taste_models_generate_full_chains_without_repeats(name):
     data = make_fake_dataset(n_sessions=80, n_tracks=400, random_seed=3)
-    model = model_cls().fit(data.sessions[data.sessions["split"] == "train"])
+    model = build_model(name, data)
     seeds = [list(s) for s in data.eval_targets["seed_track_ids"]]
     chains = generate_chains(model, seeds, RuleMix(data.tracks), alpha=0.5)
     assert len(chains) == len(seeds)

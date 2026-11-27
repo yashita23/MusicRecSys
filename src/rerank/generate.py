@@ -7,21 +7,11 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-import numpy as np
-
-from src.models.base import BATCH_SESSIONS, TasteModel
-from src.rerank.combine import MixScorer, final_scores
+from src.data.schema import N_CANDIDATES
+from src.models.base import TasteModel, candidates_for_sessions
+from src.rerank.combine import MixScorer, score_candidates
 
 CHAIN_LENGTH = 10
-N_CANDIDATES = 100
-
-
-def _candidates_for(model: TasteModel, sessions: list[list[str]], k: int) -> list[tuple[list[str], np.ndarray]]:
-    """Ứng viên cho mọi phiên; mô hình có candidates_batch (như SASRec) thì chấm theo lô, giống export_candidates."""
-    batch = getattr(model, "candidates_batch", None)
-    if batch is None:
-        return [model.candidates(s, k=k) for s in sessions]
-    return [r for start in range(0, len(sessions), BATCH_SESSIONS) for r in batch(sessions[start : start + BATCH_SESSIONS], k)]
 
 
 def generate_chains(
@@ -35,7 +25,6 @@ def generate_chains(
     """Mỗi seed → [bài cuối seed, bài sinh 1, …, bài sinh `length`]; đúng đầu vào của src.eval.smoothness."""
     sessions = [list(seed) for seed in seeds]
     for _ in range(length):
-        for session, (ids, taste) in zip(sessions, _candidates_for(model, sessions, n_candidates)):
-            _, _, final = final_scores(ids, taste, session[-1], mix, alpha)
-            session.append(ids[int(np.argmax(final))])  # argmax lấy ứng viên đầu tiên khi hòa, như rerank
+        for session, (ids, taste) in zip(sessions, candidates_for_sessions(model, sessions, n_candidates)):
+            session.append(score_candidates(ids, taste, session[-1], mix, alpha).best())
     return [[session[len(seed) - 1], *session[len(seed):]] for session, seed in zip(sessions, seeds)]
