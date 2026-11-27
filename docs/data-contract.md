@@ -53,6 +53,9 @@ mixnext-mix-learned  (notebook 08, #23), rồi được chép vào artifacts/ ch
 └── out/
     ├── mix_learned.npz                                              # xem mục mix_learned.npz
     └── mix_learned.json                                             # báo cáo huấn luyện
+
+mixnext-artifacts    (notebook 14, #20): tải về rồi giải nén vào artifacts/ của repo
+└── artifacts/                                                       # xem mục artifacts/
 ```
 
 - Lần chạy 1, 2 (#26): chưa chốt cách đăng. Version mới của một Dataset thay **toàn bộ** file của version cũ, nên hoặc notebook phải ghi lại cả file của lần chạy 0, hoặc mỗi lần chạy dùng một Dataset riêng. #26 quyết định và cập nhật mục này.
@@ -160,6 +163,18 @@ Vector bài của các mô hình có embedding (ALS, item2vec). App và bước 
 - `{model}_tracks.parquet`: cột `row` (int, 0…n−1, liền mạch) và cột `track_id` (string, duy nhất, có trong `tracks.parquet`). Hàng `row` = i ứng với vector thứ i.
 
 Mỗi mô hình có index riêng và chỉ chứa những bài nó đã học được, tức là bài có xuất hiện trong train. Không có vector 0 lấp chỗ trống.
+
+## artifacts/
+
+Mọi file app đọc (#20), do `python -m src.export_artifacts` ghi ra; app đọc bằng `load_artifacts` trong `src/export_artifacts.py`, chỉ cần numpy và pandas.
+
+- `tracks.parquet`: schema `tracks`, gồm mọi bài có vector và mọi bài của playlist demo.
+- `item_embeddings.npy`, `track_index.parquet`: như `item_embeddings/{model}.npy` và `{model}_tracks.parquet` của mô hình được chọn (ALS hoặc item2vec, NDCG@10 val cao nhất trong `{model}_params.json`), thứ tự hàng giữ như file gốc. Mọi bài trong `track_index` có trong `tracks.parquet`.
+- `demo_playlists.parquet`: `session_id`, `seed_track_ids`, `target_track_id` của 100 phiên test chọn theo `random_seed` 42 (như `eval_targets`, bỏ cột `split`).
+- `manifest.json`: `model`, `decay`, `mix_weights` (`bpm`, `key`, `energy` của điểm mix theo luật), `mix_learned` (có `mix_learned.npz` hay không), `params`, `val_ndcg` (theo mô hình), số bài, `n_dropped` (số bài có vector bị cắt để dưới 200 MB).
+- `mix_learned.npz`: chép nguyên từ `mixnext-mix-learned`, xem mục `mix_learned.npz`.
+
+Phiên không có bài nào có vector thì app lấy ứng viên từ Popularity dựng theo cột `n_occurrences` của `tracks.parquet`, cho cùng kết quả với Popularity học trên các phiên train (khi danh mục không bị cắt).
 
 ## File trung gian của A
 

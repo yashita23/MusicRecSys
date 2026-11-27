@@ -60,6 +60,7 @@ Mỗi notebook clone repo từ GitHub và gọi hàm trong `src/`. Từ notebook
 | `09_onion_import` | #54 (mở rộng) | không cần; tải thẳng từ Zenodo record 15394646 | Dataset `mixnext-onion`: `onion/listening_events.parquet`, `onion/essentia.parquet`, `onion/import_log.json`, `onion/README.md` |
 | `12_learned_vs_rule` | #24 | `titeohihi/mixnext-splited`, `mixnext-mix-learned` | Không đăng Dataset: hình và bảng so sánh điểm mix học với luật cho báo cáo (`out/learned_vs_rule/`) |
 | `13_sweep` | #19 | `titeohihi/mixnext-splited`, `mixnext-candidates` | Không đăng Dataset: `out/sweep_v1.csv` (độ chính xác và độ mượt theo α, α được chọn) và `out/fig_tradeoff_v1.png`; dán CSV vào PR, bảng và hình (vẽ lại bằng `--plot-only`) được commit vào `reports/` |
+| `14_export_artifacts` | #20 | `titeohihi/mixnext-splited`, `mixnext-embeddings`, `mixnext-item2vec`, `mixnext-mix-learned` | Dataset `mixnext-artifacts`: mọi file app đọc (`artifacts/`), tải về và giải nén vào `artifacts/` của repo |
 
 Bật Internet ở mọi notebook (để clone repo và `pip install`). Chỉ cần CPU, trừ notebook 07 (SASRec) cần GPU. Các Dataset đều để **Private** vì sinh từ MPD.
 
