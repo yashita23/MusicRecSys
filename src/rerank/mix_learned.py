@@ -20,8 +20,6 @@ import pandas as pd
 
 from src.features.track_features import TrackFeatures
 
-PAIR_COLUMNS = ["prev_track_id", "next_track_id"]
-
 # Đặc trưng x của một bài. Tempo dùng log2 để nhịp gấp đôi/một nửa cách nhau đúng 1, kèm (cos, sin) của log2(bpm)
 # để nhịp gấp đôi/một nửa trùng nhau như ở luật. Tông là góc trên vòng Camelot (12 ↔ 1 liền nhau) và chữ A/B.
 FEATURE_NAMES = ("log_tempo", "tempo_cos", "tempo_sin", "key_cos", "key_sin", "major", "energy")

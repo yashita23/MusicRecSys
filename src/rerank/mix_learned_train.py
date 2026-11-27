@@ -18,7 +18,7 @@ import dataclasses
 import itertools
 import json
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -148,7 +148,7 @@ class TrainResult:
 
     def report(self) -> dict:
         return {
-            "params": {**self.params.__dict__, "hidden": list(self.params.hidden)},
+            "params": {**asdict(self.params), "hidden": list(self.params.hidden)},
             "feature_names": list(FEATURE_NAMES),
             "n_train_pairs": self.n_train_pairs,
             "n_val_pairs": self.n_val_pairs,
