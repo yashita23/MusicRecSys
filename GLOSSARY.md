@@ -6,7 +6,8 @@ MixNext gợi ý bài hát tiếp theo cho một phiên nghe sao cho vừa hợp
 
 **Phiên** (session):
 Chuỗi bài có thứ tự mà người dùng đang nghe; trong dữ liệu, mỗi playlist MPD là một phiên.
-_Avoid_: user, người dùng (MPD không có user ID)
+Ở bộ phụ last.fm (#55), phiên được cắt từ lịch sử nghe của một user: phiên mới khi nghỉ quá 30 phút.
+_Avoid_: user, người dùng khi nói về MPD (MPD không có user ID)
 
 **Seed**:
 Các bài đầu của phiên được đưa vào hệ thống làm đầu vào; khi đánh giá là 5 bài đầu của playlist.

@@ -201,6 +201,8 @@ Chỉ dùng giữa các ticket của A (#5 → #6, #7). B và C không đọc c�
 
 Bộ dữ liệu thứ hai cho phần điểm mix, từ Music4All-Onion (Moscati và cộng sự, CIKM 2022; Zenodo record 15394646, CC BY 4.0). Tách hẳn khỏi pipeline MPD: schema của MPD ở trên không đổi, `validate_dataset` không dùng cho bộ này.
 
+Chỉ dùng giữa các ticket #54–#57 (B). Không phải schema của MPD, không qua `src/data/schema.py` và không có trong `src/data/fake.py`, nên luật "sửa cả ba nơi" ở đầu tài liệu không áp dụng: schema định nghĩa và kiểm tra ở `src/data/lastfm.py` (`validate_lastfm_sessions`) và `tests/test_lastfm.py`.
+
 ```text
 Kaggle Dataset mixnext-onion (notebook 09, #54)
 └── out/onion/listening_events.parquet, essentia.parquet, import_log.json, README.md

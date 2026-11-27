@@ -147,3 +147,20 @@ def test_large_user_ids_take_the_fallback_sort_and_give_the_same_sessions():
     actual, _ = cut_sessions(shifted, USABLE)
     pd.testing.assert_frame_equal(actual.drop(columns="user_id"), expected.drop(columns="user_id"))
     assert (actual["user_id"] - 2**20).tolist() == expected["user_id"].tolist()
+
+
+def test_an_empty_track_id_is_reported_instead_of_corrupting_the_sort():
+    with pytest.raises(ValueError, match="rỗng"):
+        cut_sessions(EVENTS.assign(track_id=EVENTS["track_id"].where(EVENTS.index != 3)), USABLE)
+
+
+def test_validation_rejects_session_ids_that_skip_a_number():
+    good = assign_user_splits(many_users(10))
+    with pytest.raises(SchemaError, match="session_id"):
+        validate_lastfm_sessions(good.assign(session_id=good["session_id"] * 2))
+
+
+def test_sampling_users_happens_on_read_and_the_log_keeps_the_full_event_count(onion_dir, tmp_path):
+    log = main(["--onion", str(onion_dir), "--out", str(tmp_path / "out"), "--sample-users", "0.5"])
+    assert log["sample_users"] == 0.5 and log["events_total"] == 21
+    assert log["funnel"][0]["users"] == 2  # round(0,5 × 3 user) = 2, lấy ngay khi đọc parquet
