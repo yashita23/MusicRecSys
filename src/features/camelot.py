@@ -9,6 +9,7 @@ import numpy as np
 from src.data.preview import preview_ids
 
 CAMELOT_PATTERN = r"^(?:[1-9]|1[0-2])[AB]$"
+MAX_CAMELOT_DISTANCE = 7  # 6 bước trên vòng (nửa vòng) + đổi chữ A/B
 _CAMELOT_RE = re.compile(CAMELOT_PATTERN)
 
 

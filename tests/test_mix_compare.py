@@ -57,6 +57,14 @@ def test_exactly_six_percent_falls_in_the_mixable_band():
     assert table.loc[0, "3–6%"] == pytest.approx(1.0)
 
 
+@pytest.mark.parametrize("bpm", [60.0, 87.3, 141.1, 199.9])
+def test_six_percent_up_to_float_noise_still_counts_as_mixable_in_the_heatmap(bpm):
+    # bpm·1,06 thường lệch hơn 0,06 một chút do dấu phẩy động (60 → 63,6 cho 0,060000000000000046)
+    t = pd.DataFrame({"track_id": [A, B], "bpm": [bpm, bpm * 1.06], "camelot": ["8A", "8A"], "energy": [0.5, 0.5]})
+    counts = heatmap_table(score_pairs(pairs((A, B)), t, {"rule": RuleMix(t)}), "rule", aggfunc="count")
+    assert counts.loc[0, "3–6%"] == 1
+
+
 def test_sample_pairs_draws_distinct_tracks_for_each_current_track():
     ids = [f"{i:022d}" for i in range(50)]
     sampled = sample_pairs(ids, n_current=5, n_candidates=10, rng=np.random.default_rng(0))
@@ -95,6 +103,12 @@ def test_in_batch_recall_ranks_each_true_next_track_against_the_rest_of_the_batc
 def test_in_batch_recall_with_k_covering_the_batch_always_hits():
     stats = in_batch_recall(lookup, pairs((P1, N1), (P2, N2), (P3, N3)), batch_size=3, k=10)
     assert stats["recall"] == 1.0 and stats["random_recall"] == 1.0
+
+
+def test_a_last_batch_of_one_pair_is_dropped_like_in_training():
+    # một cặp đứng riêng không có mẫu âm nào: lúc huấn luyện batch đó bị bỏ, ở đây cũng vậy
+    stats = in_batch_recall(lookup, pairs((P1, N1), (P2, N2), (P3, N3)), batch_size=2, k=1)
+    assert stats["n"] == 2
 
 
 def test_in_batch_recall_of_learned_mix_matches_the_metric_used_while_training():
@@ -138,9 +152,11 @@ def test_real_consecutive_pairs_are_compared_with_the_same_pairs_given_a_random_
     table = real_vs_random(scene_sessions(), two_scene_catalog(), split="train", rng=np.random.default_rng(0), repeats=400)
     assert table.loc["thật", "n_pairs"] == 6            # chỉ phiên train: 3 cặp mỗi phiên
     assert table.loc["thật", "mixable_pct"] == pytest.approx(100.0)
-    # bài kế tiếp rút từ chính các bài kế tiếp của split: một nửa thuộc nhóm còn lại → khoảng 50%
-    assert table.loc["ngẫu nhiên", "n_pairs"] == 6 * 400
-    assert 40 < table.loc["ngẫu nhiên", "mixable_pct"] < 60
+    # Bài kế tiếp rút từ 6 bài kế tiếp của split (X2, X1, X2, Y2, Y1, Y2), bỏ lần rút trúng chính bài đang phát.
+    # Bài đang phát X1, X2, X1, Y1, Y2, Y1 giữ lại 5, 4, 5, 5, 4, 5 trong 6 lần rút, mix được 2, 1, 2, 2, 1, 2
+    # → kỳ vọng 10/28 ≈ 35,7%
+    assert 0 < table.loc["ngẫu nhiên", "n_pairs"] < 6 * 400
+    assert table.loc["ngẫu nhiên", "mixable_pct"] == pytest.approx(100 * 10 / 28, abs=5)
 
 
 def test_val_split_only_uses_val_playlists():
