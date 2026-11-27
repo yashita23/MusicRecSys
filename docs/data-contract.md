@@ -48,6 +48,11 @@ mixnext-sasrec       (notebook 07, #16)
 └── out/
     ├── candidates/sasrec_{val,test}_run{r}.parquet
     └── sasrec/sasrec_run{r}.pt, sasrec_run{r}.json                  # checkpoint PyTorch và báo cáo huấn luyện
+
+mixnext-mix-learned  (notebook 08, #23), rồi được chép vào artifacts/ cho app (#20)
+└── out/
+    ├── mix_learned.npz                                              # xem mục mix_learned.npz
+    └── mix_learned.json                                             # báo cáo huấn luyện
 ```
 
 - Lần chạy 1, 2 (#26): chưa chốt cách đăng. Version mới của một Dataset thay **toàn bộ** file của version cũ, nên hoặc notebook phải ghi lại cả file của lần chạy 0, hoặc mỗi lần chạy dùng một Dataset riêng. #26 quyết định và cập nhật mục này.
@@ -126,6 +131,13 @@ Tham số mà lần chạy 0 đã chọn trên val (`src/models/embedding_runner
 | `grid` | Toàn bộ lưới đã thử: mỗi dòng là một bộ tham số kèm `hit_rate`, `ndcg`, `mrr` trên val |
 
 `sasrec_run{r}.json` cũng có `params`, kèm thêm `run`, `device`, `history` (NDCG mẫu val theo epoch) và `val`. Đây là báo cáo chứ không phải dữ liệu, nên `schema.py` không có validator cho các file này.
+
+## mix_learned.npz và mix_learned.json
+
+Trọng số của điểm mix học (#23), do `python -m src.rerank.mix_learned_train` ghi ra. App đọc bằng `LearnedMix.load(tracks, path)` trong `src/rerank/mix_learned.py`, chỉ cần numpy.
+
+- `mix_learned.npz`: `f_out.{i}.weight`, `f_out.{i}.bias`, `f_in.{i}.weight`, `f_in.{i}.bias` (float32, lớp thứ i; weight có shape `(out, in)` như `torch.nn.Linear`), `temperature` (τ) và `feature_names`. `feature_names` phải trùng `FEATURE_NAMES` trong code, nếu không `LearnedMix.load` báo lỗi.
+- `mix_learned.json`: `params`, `run`, `feature_names`, `n_train_pairs`, `n_val_pairs`, `best_epoch`, `val` (loss và Recall@10 trong batch của epoch tốt nhất, kèm mức ngẫu nhiên), `history` (epoch 0 là bộ mã hóa chưa học) và `seconds`. Đây là báo cáo chứ không phải dữ liệu, nên `schema.py` không có validator cho file này.
 
 ## candidates/{model}_{split}_run{r}.parquet
 
