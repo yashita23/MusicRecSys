@@ -197,6 +197,33 @@ Chỉ dùng giữa các ticket của A (#5 → #6, #7). B và C không đọc c�
 | `tracks_raw.parquet` | #5 | `track_id`, `track_name`, `artist_name`, `tempo`, `key`, `mode`, `energy`. Đúng các bài còn trong `sessions_raw`, mọi bài đều dùng được |
 | `build_log.json` | #5 | Số phiên, số bài, số lượt sau từng bước lọc, kèm cấu hình (`n_slices`, `random_seed`) |
 
+## Bộ phụ last.fm (mở rộng #54–#57)
+
+Bộ dữ liệu thứ hai cho phần điểm mix, từ Music4All-Onion (Moscati và cộng sự, CIKM 2022; Zenodo record 15394646, CC BY 4.0). Tách hẳn khỏi pipeline MPD: schema của MPD ở trên không đổi, `validate_dataset` không dùng cho bộ này.
+
+```text
+Kaggle Dataset mixnext-onion (notebook 09, #54)
+└── out/onion/listening_events.parquet, essentia.parquet, import_log.json, README.md
+
+Kaggle Dataset mixnext-lastfm (notebook 10, #55; #56 thêm tracks.parquet)
+└── out/lastfm/sessions.parquet, lastfm_log.json
+```
+
+### lastfm/sessions.parquet
+
+| cột | kiểu | ràng buộc |
+| --- | --- | --- |
+| `session_id` | int | 0…n−1, theo thứ tự (user, thời điểm bắt đầu phiên) |
+| `user_id` | int | user của last.fm |
+| `split` | string | `train`, `val` hoặc `test`, chia **theo user** 80/10/10, `random_seed` = 42: mọi phiên của một user cùng một split |
+| `pos` | int | 0…n−1 liền mạch trong từng phiên |
+| `track_id` | string | ID 16 ký tự của Music4All-Onion (không phải Spotify ID); có đặc trưng Essentia với `rhythm.bpm` > 0 |
+
+- Phiên mới khi khoảng nghỉ giữa hai lượt nghe liên tiếp của một user > 30 phút; bỏ lượt có timestamp trước 2002-01-01 (dữ liệu có mốc epoch 0).
+- Không có hai lượt liên tiếp cùng bài (đã gộp `A A A → A`); mỗi phiên ≥ 5 bài.
+- Kiểm tra: `src.data.lastfm.validate_lastfm_sessions` (không dùng `validate_sessions` vì track_id 16 ký tự).
+- `lastfm_log.json`: phễu (lượt, phiên, bài, user sau từng bước), độ nhạy theo khoảng nghỉ 15/30/60 phút (số phiên, số cặp liền nhau), tỉ lệ lấy mẫu user, thống kê từng split.
+
 ## Kiểm tra
 
 ```python
