@@ -16,19 +16,44 @@ Muốn đổi schema thì mở PR sửa cả ba nơi (tài liệu này, `schema.
 ├── split_report.json                    # báo cáo chia tập, xem mục split_report.json
 └── sessions_raw.parquet, tracks_raw.parquet, build_log.json   # file trung gian của A, giữ lại từ v1
 
-<root>/                                  # Kaggle Dataset mixnext-candidates
-└── candidates/{model}_{split}_run{r}.parquet
-
-<root>/                                  # Kaggle Dataset mixnext-embeddings, rồi được chép vào artifacts/ cho app
-└── item_embeddings/
-    ├── {model}.npy
-    └── {model}_tracks.parquet
+<root>/                                  # ở máy hoặc dữ liệu giả (python -m src.data.fake); trên Kaggle xem bên dưới
+├── candidates/{model}_{split}_run{r}.parquet
+└── item_embeddings/{model}.npy, {model}_tracks.parquet
 ```
 
 - `tracks`, `sessions`, `eval_targets` được tạo bằng `python -m src.data.split --raw-dir <thư mục #5> --out <thư mục ra>` (#6, #7). Mỗi phiên được gán vào một split theo hoán vị ngẫu nhiên của `session_id` với `random_seed` = 42, tỉ lệ 80/10/10.
 - `model` ∈ `popularity`, `itemknn`, `als`, `item2vec`, `sasrec` (dữ liệu giả dùng `fake`).
 - `split` ∈ `val`, `test`.
 - `r` là số thứ tự lần chạy: 0, 1, 2.
+
+**Output của các notebook mô hình (04–07) trên Kaggle.** Mỗi notebook đăng một Kaggle Dataset riêng, vì Dataset tạo từ output của một notebook chỉ nhận version mới từ chính notebook đó. Notebook 04 chứa cả hai baseline. Mọi file trong các bộ này nằm dưới thư mục `out/`. Ứng viên của mô hình có embedding (ALS, item2vec) nằm chung bộ với embedding của nó.
+
+```text
+mixnext-candidates   (notebook 04, #9)
+└── out/candidates/{popularity,itemknn}_{val,test}_run0.parquet     # hai baseline tất định, chỉ có lần chạy 0
+
+mixnext-embeddings   (notebook 05, #14 — ALS), rồi được chép vào artifacts/ cho app (#20)
+└── out/
+    ├── candidates/als_{val,test}_run{r}.parquet
+    ├── item_embeddings/als.npy, als_tracks.parquet                  # chỉ ghi ở lần chạy 0, tên không có số lần chạy
+    └── als_params.json                                              # xem mục {model}_params.json
+
+mixnext-item2vec     (notebook 06, #15)
+└── out/
+    ├── candidates/item2vec_{val,test}_run{r}.parquet
+    ├── item_embeddings/item2vec.npy, item2vec_tracks.parquet        # chỉ ghi ở lần chạy 0
+    └── item2vec_params.json
+
+mixnext-sasrec       (notebook 07, #16)
+└── out/
+    ├── candidates/sasrec_{val,test}_run{r}.parquet
+    └── sasrec/sasrec_run{r}.pt, sasrec_run{r}.json                  # checkpoint PyTorch và báo cáo huấn luyện
+```
+
+- Lần chạy 1, 2 (#26): chưa chốt cách đăng. Version mới của một Dataset thay **toàn bộ** file của version cũ, nên hoặc notebook phải ghi lại cả file của lần chạy 0, hoặc mỗi lần chạy dùng một Dataset riêng. #26 quyết định và cập nhật mục này.
+- Trong notebook, Add Input các bộ cần dùng, rồi tìm file theo tên bằng `Path("/kaggle/input").rglob("<tên file>")`. Đừng ghi cứng đường dẫn, vì thư mục mount và tiền tố `out/` có thể khác nhau giữa các bộ.
+- Khi tạo Dataset từ output, chỉ giữ `out/`. Bỏ thư mục `MusicRecSys` mà bước bootstrap đã clone vào `/kaggle/working`.
+- Tiền tố `out/` chỉ có trên Kaggle. Ở máy và với dữ liệu giả, `candidates/` và `item_embeddings/` nằm thẳng dưới thư mục gốc (cây ở trên). Schema các bảng giống hệt nhau.
 
 ## tracks.parquet
 
@@ -90,6 +115,17 @@ Báo cáo đi kèm ba bảng trên, do `src/data/split.py` (`SplitReport`) ghi r
 | `n_dropped_target_in_seed` | `{val, test}` → số phiên bị bỏ vì bài đích nằm trong seed |
 | `share_target_unseen_in_train` | `{val, test}` → tỉ lệ bài đích không có trong train (luôn tính là trượt) |
 | `fingerprint` | sha256 của `tracks`, `sessions`, `eval_targets` theo đúng thứ tự dòng. Chạy lại ra cùng giá trị nghĩa là ra cùng dữ liệu |
+
+## {model}_params.json
+
+Tham số mà lần chạy 0 đã chọn trên val (`src/models/embedding_runner.py`). Các lần chạy sau đọc lại file này qua `--params` thay vì chọn lại.
+
+| khóa | ý nghĩa |
+| --- | --- |
+| `params` | Bộ tham số đã chọn (NDCG@10 val cao nhất), gồm cả tham số học (`factors`, `window`, …) và tham số chấm (`decay`, `normalize`) |
+| `grid` | Toàn bộ lưới đã thử: mỗi dòng là một bộ tham số kèm `hit_rate`, `ndcg`, `mrr` trên val |
+
+`sasrec_run{r}.json` cũng có `params`, kèm thêm `run`, `device`, `history` (NDCG mẫu val theo epoch) và `val`. Đây là báo cáo chứ không phải dữ liệu, nên `schema.py` không có validator cho các file này.
 
 ## candidates/{model}_{split}_run{r}.parquet
 
