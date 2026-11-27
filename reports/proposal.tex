@@ -1,6 +1,6 @@
 % Đề xuất đề tài MixNext (ticket #10, spec §14). Biên dịch: tectonic reports/proposal.tex  (hoặc xelatex trên Overleaf)
 \documentclass[11pt,a4paper]{article}
-\usepackage[a4paper,margin=2cm]{geometry}
+\usepackage[a4paper,hmargin=2cm,vmargin=1.5cm]{geometry}
 \usepackage{amsmath}
 \usepackage{fontspec}
 \setmainfont{texgyretermes}[Extension=.otf, UprightFont=*-regular, BoldFont=*-bold,
@@ -46,25 +46,27 @@ mục tiêu thứ hai: bài tiếp theo phải nối được với bài đang p
 \muc{2. Phương pháp dự kiến}
 Hệ gợi ý lai hai tầng.
 \begin{itemize}
-  \item \textbf{Tầng 1 — điểm gu:} sinh 100 ứng viên theo gu của phiên bằng lọc cộng tác (item-kNN theo bài liền kề,
-        ALS trên ma trận playlist × bài), item2vec và mô hình tuần tự SASRec, học từ dữ liệu playlist. So với hai baseline
-        là Popularity và item-kNN.
-  \item \textbf{Tầng 2 — điểm mix:} xếp lại ứng viên theo độ chuyển bài từ bài đang phát. Có hai cách tính:
-        (a) luật của DJ: độ lệch BPM (kể cả nhịp gấp đôi/một nửa), vòng tông Camelot, chênh lệch năng lượng;
-        (b) bộ mã hóa chuyển bài học từ các cặp bài liền nhau trong playlist bằng học tương phản (InfoNCE).
+  \item \textbf{Tầng 1 — điểm gu:} ba mô hình gu học từ dữ liệu playlist sinh 100 ứng viên cho phiên: lọc cộng tác ALS
+        trên ma trận playlist × bài, item2vec, và mô hình tuần tự SASRec. So với hai baseline: Popularity và
+        item-kNN liền kề (bài hay đứng ngay sau bài đang phát trong các playlist).
+  \item \textbf{Tầng 2 — điểm mix:} xếp lại ứng viên theo điểm mix với bài đang phát. Có hai cách tính:
+        (a) điểm mix theo luật DJ: độ lệch BPM (kể cả nhịp gấp đôi/một nửa), vòng tông Camelot, chênh lệch năng lượng;
+        (b) điểm mix học: hai bộ mã hóa học từ các cặp bài liền nhau trong playlist bằng học tương phản (InfoNCE).
   \item \textbf{Kết hợp:} điểm cuối $= \alpha \cdot \text{điểm gu (chuẩn hóa)} + (1-\alpha) \cdot \text{điểm mix}$,
-        $\alpha \in [0, 1]$; trọng số các thành phần mix và $\alpha$ chọn bằng grid search trên tập validation.
-  \item \textbf{Đánh giá:} độ chính xác bằng HitRate@10, NDCG@10, MRR; độ mượt trên chuỗi 10 bài bằng độ lệch BPM,
-        tỉ lệ cặp chuyển tông tương thích, độ lệch năng lượng và tỉ lệ cặp mix được. Kết quả chính là
-        \textbf{đường đánh đổi} giữa độ chính xác và độ mượt khi thay đổi $\alpha$, cùng ablation từng thành phần điểm mix
-        và so sánh luật với điểm mix học, lặp 3 lần chạy.
+        $\alpha \in [0, 1]$. Trọng số của điểm mix theo luật và $\alpha$ chọn bằng grid search trên tập validation:
+        tỉ lệ cặp mix được cao nhất mà NDCG@10 giảm không quá 10\%.
+  \item \textbf{Đánh giá:} độ chính xác bằng HitRate@10, NDCG@10, MRR; độ mượt trên chuỗi 10 bài bằng độ lệch BPM
+        trung bình, tỉ lệ chuyển tông hợp và độ lệch năng lượng trung bình; cùng tỉ lệ cặp mix được. Kết quả chính là
+        \textbf{đường đánh đổi} giữa độ chính xác và độ mượt khi thay đổi $\alpha$, bảng kết quả 3 lần chạy với
+        \texttt{random\_seed} khác nhau, ablation từng thành phần điểm mix và so sánh luật với điểm mix học.
 \end{itemize}
 
 \muc{3. Dữ liệu}
-Spotify Million Playlist Dataset (RecSys Challenge 2018; bản sao công khai trên Kaggle vì bản gốc đã bị gỡ), ghép với
+Spotify Million Playlist Dataset (RecSys Challenge 2018; bản gốc đã bị gỡ nên dùng bản sao không chính thức trên Kaggle,
+\texttt{himanshuwagh/spotify-million}), ghép với
 đặc trưng âm thanh (tempo, tông, mode, năng lượng) từ một bộ dữ liệu công khai khoảng 2 triệu bài của MPD theo mã bài hát.
 Mỗi playlist là một phiên nghe. Từ khoảng 100 nghìn playlist lấy mẫu, bỏ các bài không có đặc trưng hoặc xuất hiện dưới
-5 lượt, bỏ các phiên quá ngắn, còn khoảng 92 nghìn phiên; chia train/validation/test 80/10/10 theo phiên. Khi đánh giá,
+5 lượt, bỏ các phiên còn dưới 10 bài, còn khoảng 92 nghìn phiên; chia train/validation/test 80/10/10 theo phiên. Khi đánh giá,
 5 bài đầu của phiên là seed và bài thứ 6 là bài đích.
 
 \muc{4. Đầu vào và đầu ra}
