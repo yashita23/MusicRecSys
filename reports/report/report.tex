@@ -14,9 +14,10 @@
 \usepackage{longtable}
 \usepackage{graphicx}
 \usepackage{xcolor}
+\usepackage{xurl}  % \path{...} ngắt dòng được ở mọi ký tự (tên dataset dài trong bảng)
 \usepackage[hidelinks]{hyperref}
 
-% Đường dẫn hình tính từ reports/report/ (\IfFileExists không dùng \graphicspath): ảnh app ở img/, hình kết quả ở ../
+% Mọi hình để trong img/ (đường dẫn tính từ reports/report/; \IfFileExists không dùng \graphicspath), để thư mục này tự đủ khi upload lên Overleaf
 \setlist{nosep,leftmargin=1.4em}
 \setlength{\parskip}{0.4em}
 
@@ -46,7 +47,7 @@
     \midrule
     \canviet{A} & Nguyễn Hoàng Vũ  & 20235251 & dữ liệu, đặc trưng, điểm mix \\
     \canviet{B} & Bùi Công Hoan    & 20235083 & mô hình gu, đánh giá \\
-    \canviet{C} & Nguyễn Công Minh & 20235161 & xếp lại, demo, báo cáo \\
+    \canviet{C} & Nguyễn Công Minh & 20235161 & xếp lại, giải thích, demo \\
     \bottomrule
   \end{tabular}\\[0.4cm]
   {\small \canviet{nhóm ghép đúng vai A/B/C với từng người rồi bỏ đánh dấu}}
@@ -70,9 +71,9 @@
   \bibitem{item2vec} O. Barkan, N. Koenigstein. \emph{Item2Vec: Neural Item Embedding for Collaborative Filtering}. IEEE MLSP 2016.
   \bibitem{w2vrec} H. Caselles-Dupré, F. Lesaint, J. Royo-Letelier. \emph{Word2vec applied to Recommendation: Hyperparameters Matter}. RecSys 2018.
   \bibitem{sasrec} W.-C. Kang, J. McAuley. \emph{Self-Attentive Sequential Recommendation}. ICDM 2018.
-  \bibitem{ce} A. Klenitskiy, A. Vasilev. \emph{Turning Dross Into Gold Loss: is BERT4Rec really better than SASRec?}. RecSys 2023.
+  \bibitem{sasrec_ce} A. Klenitskiy, A. Vasilev. \emph{Turning Dross Into Gold Loss: is BERT4Rec really better than SASRec?}. RecSys 2023.
   \bibitem{infonce} A. van den Oord, Y. Li, O. Vinyals. \emph{Representation Learning with Contrastive Predictive Coding}. arXiv:1807.03748, 2018.
-  \bibitem{kk} C. L. Krumhansl. \emph{Cognitive Foundations of Musical Pitch}. Oxford University Press, 1990.
+  \bibitem{krumhansl} C. L. Krumhansl. \emph{Cognitive Foundations of Musical Pitch}. Oxford University Press, 1990.
   \bibitem{onion} M. Moscati, E. Parada-Cabaleiro, Y. Deldjoo, E. Zangerle, M. Schedl. \emph{Music4All-Onion: A Large-Scale Multi-faceted Content-Centric Music Recommendation Dataset}. CIKM 2022.
 \end{thebibliography}
 
