@@ -69,14 +69,9 @@ def test_only_the_requested_split_is_used_and_long_sessions_can_be_left_out():
     assert capped.loc["thật", "mixable_pct"] == pytest.approx(50.0) and capped.loc["thật", "n_sessions"] == 2
 
 
-def test_sampling_train_sessions_stops_near_the_target_pair_count_and_keeps_other_splits():
-    from src.rerank.mix_datasets import sample_train_sessions
-
-    train = sessions_frame([[A, B, C, D]] * 30, split="train")  # 30 phiên train, mỗi phiên 3 cặp
-    val = sessions_frame([[A, B]], split="val").assign(session_id=100)
-    sampled, n_pairs = sample_train_sessions(pd.concat([train, val]), target_pairs=20, rng=np.random.default_rng(0))
-    assert n_pairs == 21 and sampled.loc[sampled["split"] == "train", "session_id"].nunique() == 7  # 7 phiên × 3 ≥ 20
-    assert (sampled["split"] == "val").sum() == 2  # split khác giữ nguyên
+def test_a_split_without_pairs_is_an_error_in_vietnamese():
+    with pytest.raises(ValueError, match="không có cặp"):
+        real_vs_random_ci(SESSIONS, TRACKS, "test", np.random.default_rng(0), n_boot=10)
 
 
 @pytest.fixture(scope="module")
@@ -93,7 +88,11 @@ def test_one_dataset_run_reports_e1_e2_e3_and_learns_only_from_train_pairs(fake)
     from src.rerank.mix_learned_train import MixTrainParams
 
     params = MixTrainParams(hidden=(8,), dim=4, batch_size=32, max_epochs=2, max_val_pairs=200)
-    result = run_dataset(fake.tracks, fake.sessions, params, random_seed=0, n_boot=30, recall_pairs=128, recall_batch=32, spearman_current=20, spearman_candidates=10)
+    result = run_dataset(
+        fake.tracks, fake.sessions, params, random_seed=0, n_boot=30, recall_pairs=128, recall_batch=32,
+        spearman_current=20, spearman_candidates=10, notes={"sampled_train": {"train_pairs": 1}},
+    )
+    assert result["notes"] == {"sampled_train": {"train_pairs": 1}}
 
     assert set(result["e1"]) == {"all", "max_p99"} and result["e1"]["max_p99"]["max_session_length"] > 0
     assert set(result["e1"]["all"]["table"]) == {"thật", "ngẫu nhiên", "thật − ngẫu nhiên"}
@@ -121,4 +120,6 @@ def test_loading_lastfm_for_the_mix_runs_keeps_val_samples_train_and_drops_test(
     assert set(sessions["split"]) == {"train", "val"}
     assert sessions.loc[sessions["split"] == "val", "session_id"].nunique() == 4
     assert info == {"train_sessions": 7, "train_pairs": 21, "val_sessions": 4}  # 7 × 3 ≥ 20
+    _, everything = load_sessions_for_mix(tmp_path / "sessions.parquet", target_train_pairs=10_000, rng=np.random.default_rng(0))
+    assert everything == {"train_sessions": 30, "train_pairs": 90, "val_sessions": 4}  # mục tiêu vượt quá: lấy hết train
     assert sessions["track_id"].map(type).eq(str).all()  # đã đổi về chuỗi cho TrackFeatures

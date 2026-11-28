@@ -11,7 +11,7 @@ Chỉ học từ cặp train của mỗi bộ; không đem mô hình học trên
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -24,15 +24,20 @@ from src.rerank.mix_compare import in_batch_recall, sample_pairs, score_pairs
 from src.rerank.mix_learned import LearnedMix, consecutive_pairs
 from src.rerank.mix_rule import RuleMix
 
+if TYPE_CHECKING:
+    from src.rerank.mix_learned_train import MixTrainParams
+
 E1_METRICS = ("mixable_pct", "bpm_delta_pct", "energy_gap")  # như Smoothness (#13): % cặp mix được, ΔBPM %, |Δenergy|
 CONFIDENCE = 0.95
 REAL, RANDOM, DIFFERENCE = "thật", "ngẫu nhiên", "thật − ngẫu nhiên"
-TRAIN = "train"
+TRAIN = "train"  # không lấy từ mix_learned_train (#23) vì module đó cần torch
 LONG_SESSION_QUANTILE = 0.99  # E1 báo thêm kết quả khi bỏ phiên dài hơn p99 của chính bộ dữ liệu
 
 
 def _split_pairs(sessions: pd.DataFrame, split: str, max_session_length: int | None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """(mã phiên 0…, bài đang phát, bài kế tiếp) của mọi cặp liền nhau trong split; bỏ cặp A → A như consecutive_pairs.
+
+    Chép cách lọc của consecutive_pairs (#23) nhưng giữ thêm mã phiên cho bootstrap; không sửa #23 vì là file của A.
 
     max_session_length: bỏ cả phiên dài hơn số bài này (đếm trên split), ví dụ để bỏ phiên dài bất thường.
     """
@@ -47,7 +52,7 @@ def _split_pairs(sessions: pd.DataFrame, split: str, max_session_length: int | N
 
 
 def _pair_values(features: TrackFeatures, prev: np.ndarray, nxt: np.ndarray) -> dict[str, np.ndarray]:
-    rows_a, rows_b = features.rows(prev.tolist()), features.rows(nxt.tolist())
+    rows_a, rows_b = features.rows(prev), features.rows(nxt)
     delta = features.bpm_delta(rows_a, rows_b)
     mixable = (delta <= MIXABLE_MAX_BPM_DELTA + BPM_TOLERANCE) & features.compatible_keys(rows_a, rows_b)
     return {"mixable_pct": mixable * 100.0, "bpm_delta_pct": delta * 100.0, "energy_gap": features.energy_gap(rows_a, rows_b)}
@@ -63,13 +68,17 @@ def real_vs_random_ci(
 ) -> pd.DataFrame:
     """Độ mượt của cặp liền nhau thật trong split so với cặp ngẫu nhiên, kèm khoảng tin cậy 95% bootstrap theo phiên.
 
-    Cặp ngẫu nhiên: xáo các bài kế tiếp của split (giữ độ phổ biến của bài), mỗi bài đang phát giữ phiên của nó; bỏ cặp
-    rút trúng chính bài đang phát. Mỗi lần rút, trọng số Poisson(1) cho từng phiên dùng chung cho cặp thật và cặp ngẫu
+    Cặp ngẫu nhiên: xáo (hoán vị) các bài kế tiếp của split, mỗi bài đang phát giữ phiên của nó; bỏ cặp rút trúng chính
+    bài đang phát. Khác real_vs_random của #24 (rút có hoàn lại): hoán vị giữ đúng số lần mỗi bài làm bài kế tiếp, như
+    #57 yêu cầu ("xáo bài kế tiếp trong cùng split"). Phép xáo rút một lần nên khoảng tin cậy không tính dao động do
+    xáo; với hàng triệu cặp phần này không đáng kể. Mỗi lần rút, trọng số Poisson(1) cho từng phiên dùng chung cho cặp thật và cặp ngẫu
     nhiên, nên có cả khoảng tin cậy cho chênh lệch. Dòng: "thật", "ngẫu nhiên", "thật − ngẫu nhiên"; cột: mỗi chỉ số kèm
     _low, _high, và n_pairs, n_sessions.
     """
     features = TrackFeatures.from_tracks(tracks)
     session, prev, nxt = _split_pairs(sessions, split, max_session_length)
+    if len(prev) == 0:
+        raise ValueError(f"split {split} không có cặp liền nhau nào để đo")
     shuffled = nxt[rng.permutation(len(nxt))]
     keep = prev != shuffled
     groups = {REAL: (session, _pair_values(features, prev, nxt)), RANDOM: (session[keep], _pair_values(features, prev[keep], shuffled[keep]))}
@@ -107,23 +116,6 @@ def real_vs_random_ci(
     return pd.DataFrame(rows).T
 
 
-def sample_train_sessions(sessions: pd.DataFrame, target_pairs: int, rng: np.random.Generator) -> tuple[pd.DataFrame, int]:
-    """Lấy ngẫu nhiên phiên train đến khi đủ ≥ target_pairs cặp liền nhau (đếm như consecutive_pairs); split khác giữ nguyên.
-
-    Dùng để học trên last.fm với lượng cặp ngang MPD (so sánh công bằng, vừa RAM). Trả về (phiên, số cặp train).
-    """
-    train = sessions[sessions["split"] == TRAIN].sort_values(["session_id", "pos"])
-    sid, track = train["session_id"].to_numpy(), train["track_id"].to_numpy()
-    is_pair = (sid[1:] == sid[:-1]) & (track[1:] != track[:-1])
-    pairs_per_session = pd.Series(is_pair.astype(int), index=sid[1:]).groupby(level=0).sum()
-    order = rng.permutation(pairs_per_session.index.to_numpy())
-    cumulative = pairs_per_session.loc[order].cumsum().to_numpy()
-    n_keep = int(np.searchsorted(cumulative, target_pairs) + 1) if len(cumulative) else 0
-    chosen = set(order[:n_keep].tolist())
-    keep = (sessions["split"] != TRAIN) | sessions["session_id"].isin(chosen)
-    return sessions[keep], int(cumulative[min(n_keep, len(cumulative)) - 1]) if n_keep else 0
-
-
 def load_sessions_for_mix(path: str | Path, target_train_pairs: int, rng: np.random.Generator) -> tuple[pd.DataFrame, dict]:
     """Đọc sessions.parquet của last.fm (119 triệu dòng) cho E1–E3 mà vừa RAM.
 
@@ -138,7 +130,7 @@ def load_sessions_for_mix(path: str | Path, target_train_pairs: int, rng: np.ran
     train = lengths[lengths["first"] == TRAIN]
     order = rng.permutation(train.index.to_numpy())
     cumulative = (train.loc[order, "size"] - 1).cumsum().to_numpy()
-    n_keep = int(np.searchsorted(cumulative, target_train_pairs) + 1) if len(cumulative) else 0
+    n_keep = min(int(np.searchsorted(cumulative, target_train_pairs)) + 1, len(cumulative))  # vượt quá: lấy hết train
     train_ids = order[:n_keep]
     keep = frame["session_id"].isin(np.concatenate([val_ids.to_numpy(), train_ids]))
     sessions = frame[keep].reset_index(drop=True)
@@ -155,9 +147,9 @@ def _session_length_p99(sessions: pd.DataFrame, split: str) -> int:
 def run_dataset(
     tracks: pd.DataFrame,
     sessions: pd.DataFrame,
-    params: Any,
+    params: MixTrainParams,
     random_seed: int = 0,
-    target_train_pairs: int | None = None,
+    notes: dict | None = None,
     n_boot: int = 200,
     recall_pairs: int = 20_480,
     recall_batch: int = 1024,
@@ -166,7 +158,8 @@ def run_dataset(
 ) -> dict:
     """E1–E3 trên một bộ dữ liệu (tracks có track_id, bpm, camelot, energy; sessions có split train/val).
 
-    params là MixTrainParams của #23. target_train_pairs: lấy mẫu phiên train còn chừng ấy cặp trước khi học (None: tất cả).
+    params là MixTrainParams của #23; học trên mọi phiên train được đưa vào (lấy mẫu trước bằng load_sessions_for_mix).
+    notes: ghi chú kèm theo kết quả (ví dụ thông tin lấy mẫu), để notebook không phải sửa kết quả.
     """
     from src.rerank.mix_learned_train import train  # nhập muộn: cần torch
 
@@ -180,10 +173,7 @@ def run_dataset(
         },
     }
 
-    learn_from, sampled_pairs = sessions, None
-    if target_train_pairs is not None:
-        learn_from, sampled_pairs = sample_train_sessions(sessions, target_train_pairs, rng)
-    result = train(tracks, learn_from, params, random_seed=random_seed)
+    result = train(tracks, sessions, params, random_seed=random_seed)
     scorers = {"learned": LearnedMix(tracks, result.encoders), "rule": RuleMix(tracks)}
 
     val_pairs = consecutive_pairs(sessions, VAL)
@@ -191,7 +181,6 @@ def run_dataset(
     recall = {name: in_batch_recall(scorer, val_pairs, batch_size=recall_batch) for name, scorer in scorers.items()}
     e2 = {
         "n_train_pairs": result.n_train_pairs,
-        "sampled_train_pairs": sampled_pairs,
         "best_epoch": result.best_epoch,
         "val_loss": result.best_epoch_stats["val_loss"],
         "history": result.history,
@@ -210,7 +199,7 @@ def run_dataset(
         "learned_vs_features": {c: float(corr.loc["learned", c]) for c in ("bpm_delta", "camelot_distance", "energy_gap")},
         "rule_vs_features": {c: float(corr.loc["rule", c]) for c in ("bpm_delta", "camelot_distance", "energy_gap")},
     }
-    return {"e1": e1, "e2": e2, "e3": e3, "encoders": result.encoders}
+    return {"e1": e1, "e2": e2, "e3": e3, "notes": notes or {}, "encoders": result.encoders}
 
 
 def summary_table(results: dict[str, dict]) -> pd.DataFrame:
