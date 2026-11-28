@@ -58,6 +58,7 @@ Mỗi notebook clone repo từ GitHub và gọi hàm trong `src/`. Từ notebook
 | `07_sasrec` | #16 | `titeohihi/mixnext-splited` | Dataset `mixnext-sasrec`: ứng viên, checkpoint và báo cáo huấn luyện của SASRec. Cần **GPU** |
 | `08_mix_learned` | #23 | `titeohihi/mixnext-splited` | Dataset `mixnext-mix-learned`: trọng số numpy của điểm mix học (`mix_learned.npz`) và báo cáo huấn luyện (`mix_learned.json`) |
 | `09_onion_import` | #54 (mở rộng) | không cần; tải thẳng từ Zenodo record 15394646 | Dataset `mixnext-onion`: `onion/listening_events.parquet`, `onion/essentia.parquet`, `onion/import_log.json`, `onion/README.md` |
+| `10_lastfm` | #55 (mở rộng) | `mixnext-onion` | Dataset `mixnext-lastfm`: `lastfm/sessions.parquet` (phiên theo khoảng nghỉ 30 phút, chia theo user), `lastfm/lastfm_log.json` |
 | `12_learned_vs_rule` | #24 | `titeohihi/mixnext-splited`, `mixnext-mix-learned` | Không đăng Dataset: hình và bảng so sánh điểm mix học với luật cho báo cáo (`out/learned_vs_rule/`) |
 | `13_sweep` | #19 | `titeohihi/mixnext-splited`, `mixnext-candidates` | Không đăng Dataset: `out/sweep_v1.csv` (độ chính xác và độ mượt theo α, α được chọn) và `out/fig_tradeoff_v1.png`; dán CSV vào PR, bảng và hình (vẽ lại bằng `--plot-only`) được commit vào `reports/` |
 | `14_export_artifacts` | #20 | `titeohihi/mixnext-splited`, `mixnext-embeddings`, `mixnext-item2vec`, `mixnext-mix-learned` | Dataset `mixnext-artifacts`: mọi file app đọc (`artifacts/`), tải về và giải nén vào `artifacts/` của repo |
