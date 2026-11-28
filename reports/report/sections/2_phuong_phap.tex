@@ -1,0 +1,45 @@
+% Mục 2 theo L0: Chi tiết phương pháp (spec §13). Phụ trách: A (2.1--2.3), B (2.4--2.7).
+\section{Chi tiết phương pháp}
+\phutrach{A (dữ liệu, chia tập, điểm mix) · B (mô hình gu, xếp lại, đánh giá, kết quả)}
+
+\subsection{Tổng quan hệ hai tầng}
+\canviet{A: sơ đồ tầng 1 sinh 100 ứng viên theo gu, tầng 2 xếp lại theo điểm cuối = α · gu\_norm + (1 − α) · điểm mix}
+
+\subsection{Dữ liệu và chia tập}
+\canviet{A: MPD (bản sao Kaggle) ghép bộ đặc trưng âm thanh, quy tắc lọc, độ phủ (ADR 0001); chia train/val/test theo playlist; seed 5 bài, bài đích là bài thứ 6 (ADR 0003); bộ phụ last.fm và Music4All-Onion}
+
+\subsection{Điểm mix}
+\subsubsection{Điểm mix theo luật}
+\canviet{A: công thức lệch BPM (xét ×2, ×½), vòng Camelot, chênh năng lượng, trọng số w}
+\subsubsection{Điểm mix học}
+\canviet{A: hai bộ mã hóa f\_out, f\_in, hàm mất mát InfoNCE, cặp bài liền nhau làm mẫu dương}
+
+\subsection{Mô hình gu}
+\canviet{B: Popularity, item-kNN liền kề, ALS, item2vec, SASRec; vector phiên có decay; siêu tham số chọn trên val}
+
+\subsection{Xếp lại theo α và sinh tham lam}
+\canviet{B: chuẩn hóa min-max điểm gu, sinh tham lam 10 bài để đo độ mượt}
+
+\subsection{Cách đánh giá}
+\canviet{B: HitRate@10, NDCG@10, MRR; độ mượt (\% lần chuyển mix được, lệch BPM, tông tương thích, chênh năng lượng); 3 lần chạy, trung bình ± độ lệch chuẩn; quy tắc chọn α (NDCG@10 giảm ≤ 10\%)}
+
+\subsection{Kết quả}
+\canviet{B: bảng kết quả chính trên test (\#26), ablation (\#27)}
+
+\begin{table}[htbp]\centering
+\caption{NDCG@10 trên val của các mô hình gu (α = 1, chưa xếp lại).}
+\begin{tabular}{lr}
+\toprule
+Mô hình & NDCG@10 \
+\midrule
+Popularity & 0,0040 \
+item-kNN liền kề & 0,1297 \
+ALS & 0,0967 \
+item2vec & 0,0672 \
+SASRec & 0,0809 \
+\bottomrule
+\end{tabular}
+\end{table}
+
+\hinh{../fig_tradeoff_v1.png}{Đường đánh đổi giữa NDCG@10 và \% lần chuyển mix được khi quét α (bản đầu, \#19).}{\#19}
+\canviet{B: thay bằng đường đánh đổi bản cuối và bàn về điểm chọn α}
