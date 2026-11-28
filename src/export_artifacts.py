@@ -282,15 +282,32 @@ def export(input_dir: str | Path, out_dir: str | Path, n_demo: int = N_DEMO, ran
     return artifacts
 
 
+def fake_artifacts(out_dir: str | Path, n_demo: int = 20, random_seed: int = RANDOM_SEED) -> Artifacts:
+    """artifacts/ từ dữ liệu giả (src.data.fake, embedding "fake"), để chạy thử app trên máy khi chưa tải bản thật (#21)."""
+    from src.data.fake import FAKE_MODEL, make_fake_dataset
+
+    fake = make_fake_dataset(n_sessions=300, n_tracks=500, random_seed=random_seed)
+    vectors, index = fake.embeddings[FAKE_MODEL]
+    artifacts = build_artifacts(
+        fake.tracks, vectors, index["track_id"], FAKE_MODEL, 0.7, demo_playlists(fake.eval_targets, n_demo, random_seed),
+        info={"params": {}, "val_ndcg": {}, "random_seed": random_seed, "fake": True},
+    )
+    write_artifacts(artifacts, out_dir)
+    return artifacts
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description="Xuất artifacts/ cho app (#20)")
-    ap.add_argument("--input", required=True, help="Thư mục gốc chứa dữ liệu, embedding và params.json (tìm theo tên file)")
+    ap.add_argument("--input", help="Thư mục gốc chứa dữ liệu, embedding và params.json (tìm theo tên file)")
+    ap.add_argument("--fake", action="store_true", help="Dựng từ dữ liệu giả để chạy thử app (không cần --input)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--n-demo", type=int, default=N_DEMO, help="Số playlist test mẫu cho app chọn")
     ap.add_argument("--random-seed", type=int, default=RANDOM_SEED)
     args = ap.parse_args(argv)
+    if args.fake == (args.input is not None):
+        ap.error("cần đúng một trong hai: --input <thư mục> hoặc --fake")
     try:
-        artifacts = export(args.input, args.out, args.n_demo, args.random_seed)
+        artifacts = fake_artifacts(args.out, random_seed=args.random_seed) if args.fake else export(args.input, args.out, args.n_demo, args.random_seed)
     except ValueError as e:
         ap.error(str(e))
     manifest = json.loads((Path(args.out) / MANIFEST).read_text(encoding="utf-8"))

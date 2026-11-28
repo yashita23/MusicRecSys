@@ -1,11 +1,9 @@
-# Đường dẫn dữ liệu của app MixNext (#11). Đường dẫn tương đối tính theo thư mục chứa file này (app/),
+# Đường dẫn dữ liệu của app MixNext. Đường dẫn tương đối tính theo thư mục chứa file này (app/),
 # nên chạy `streamlit run app/main.py` từ thư mục nào cũng được.
 #
-# Prototype đọc dữ liệu giả; tạo một lần ở thư mục gốc repo:
-#     python -m src.data.fake --out data/fake
-# Demo v1 (#21) sẽ đổi các đường dẫn này sang artifacts/.
+# App đọc artifacts/ (#20). Tạo ở thư mục gốc repo:
+#     python -m src.export_artifacts --input <thư mục Kaggle đã tải> --out artifacts   # bản thật
+#     python -m src.export_artifacts --fake --out artifacts                          # dữ liệu giả để thử
 
 [data]
-tracks = "../data/fake/tracks.parquet"
-eval_targets = "../data/fake/eval_targets.parquet"
-candidates = "../data/fake/candidates/fake_test_run0.parquet"
+artifacts = "../artifacts"

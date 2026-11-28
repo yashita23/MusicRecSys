@@ -1,9 +1,10 @@
-"""App MixNext (spec §8): bài đang phát, hàng đợi 10 bài, thanh trượt α. Prototype trên dữ liệu giả (#11).
+"""App MixNext, Demo v1 (#21, spec §8 mục 1–3, 5): chọn playlist test, bài đang phát, hàng đợi top-10 kèm giải thích,
+thanh trượt α, người dùng chọn bài tiếp theo, lịch sử phiên, quay lại, bắt đầu lại.
 
-    python -m src.data.fake --out data/fake   # một lần
-    streamlit run app/main.py                 # ở thư mục gốc repo, để Streamlit đọc .streamlit/config.toml (chạy offline)
+    streamlit run app/main.py      # ở thư mục gốc repo, để Streamlit đọc .streamlit/config.toml (chạy offline)
 
-Đường dẫn dữ liệu đọc từ app/config.toml; muốn dùng file config khác thì đặt biến môi trường MIXNEXT_CONFIG.
+Đọc artifacts/ (#20) theo app/config.toml; muốn dùng file config khác thì đặt biến môi trường MIXNEXT_CONFIG.
+App chỉ gợi ý: không tự phát và không tự chuyển bài. Mọi logic nằm trong app/player.py; file này chỉ hiển thị.
 """
 from __future__ import annotations
 
@@ -15,23 +16,23 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:  # `streamlit run` chỉ thêm app/ vào sys.path; cần gốc repo để import app và src
     sys.path.insert(0, str(ROOT))
 
-import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
 from app.config import DEFAULT_CONFIG, AppConfig, load_config  # noqa: E402
 from app.player import Player  # noqa: E402
 
-FAKE_DATA_DIR = "data/fake"
-FAKE_DATA_COMMAND = f"python -m src.data.fake --out {FAKE_DATA_DIR}"
-DEFAULT_ALPHA = 0.5
-TWO_DECIMALS = st.column_config.NumberColumn(format="%.2f")
+BUILD_COMMANDS = (
+    "python -m src.export_artifacts --input <thư mục Kaggle đã tải> --out artifacts   # bản thật (#20)\n"
+    "python -m src.export_artifacts --fake --out artifacts                          # dữ liệu giả để thử"
+)
+QUEUE_COLUMNS = (0.4, 3.2, 0.8, 0.8, 0.9, 0.8, 0.8, 0.8, 4.0, 0.8)  # #, bài, BPM, Camelot, năng lượng, gu, mix, cuối, giải thích, nút
 
 
 @st.cache_resource(max_entries=1)
 def load_player(cfg: AppConfig, modified: tuple[int, ...]) -> Player:
-    """Đọc lại khi file dữ liệu đổi (modified: thời điểm sửa của từng file), không cần khởi động lại app."""
+    """Đọc lại khi file artifacts đổi (modified: thời điểm sửa của từng file), không cần khởi động lại app."""
     del modified  # chỉ để làm khóa cache; không đặt tên _modified vì Streamlit bỏ tham số có dấu _ khỏi khóa
-    return Player.from_config(cfg)
+    return Player.from_dir(cfg.artifacts)
 
 
 def stop_with_error(message: str) -> None:
@@ -39,17 +40,9 @@ def stop_with_error(message: str) -> None:
     st.stop()
 
 
-def missing_files_message(missing: list[Path], config_path: Path) -> str:
-    """Chỉ nhắc lệnh sinh dữ liệu giả khi file thiếu nằm trong data/fake."""
-    fix = f"sửa đường dẫn trong `{config_path}`"
-    if any(FAKE_DATA_DIR in p.as_posix() for p in missing):
-        fix = f"tạo dữ liệu giả bằng `{FAKE_DATA_COMMAND}` (chạy ở thư mục gốc repo), hoặc {fix}"
-    return "Không tìm thấy file dữ liệu: " + ", ".join(f"`{p}`" for p in missing) + f".\n\nCách sửa: {fix}."
-
-
 st.set_page_config(page_title="MixNext", layout="wide")
 st.title("MixNext")
-st.caption("Gợi ý bài tiếp theo vừa hợp gu vừa chuyển bài mượt. Prototype trên dữ liệu giả (#11).")
+st.caption("Gợi ý bài tiếp theo vừa hợp gu vừa chuyển bài mượt. Bạn chọn bài tiếp theo trong hàng đợi; app không tự phát.")
 
 config_path = Path(os.environ.get("MIXNEXT_CONFIG", DEFAULT_CONFIG))
 try:
@@ -58,51 +51,71 @@ except (OSError, ValueError) as err:  # không có file config, TOML sai (TOMLDe
     stop_with_error(f"Không đọc được file config `{config_path}`: {err}")
 missing = cfg.missing_files()
 if missing:
-    stop_with_error(missing_files_message(missing, config_path))
+    stop_with_error(
+        f"Thiếu file trong `{cfg.artifacts}`: " + ", ".join(f"`{p.name}`" for p in missing)
+        + f".\n\nTạo artifacts/ (chạy ở thư mục gốc repo):\n```\n{BUILD_COMMANDS}\n```\nhoặc sửa đường dẫn trong `{config_path}`."
+    )
 try:
     player = load_player(cfg, tuple(p.stat().st_mtime_ns for p in cfg.files))
-except ValueError as err:  # SchemaError: dữ liệu không đúng docs/data-contract.md
-    stop_with_error(f"Dữ liệu không đúng định dạng: {err}")
+except ValueError as err:  # artifacts sai định dạng (load_artifacts kiểm tra)
+    stop_with_error(f"artifacts/ không đúng định dạng: {err}")
 
 with st.sidebar:
-    session_id = st.selectbox(f"Playlist (phiên {player.split})", player.playlists, format_func=lambda s: f"Playlist {s}")
-    alpha = st.slider("α", 0.0, 1.0, DEFAULT_ALPHA, 0.05, help="α = 1: chỉ theo điểm gu. α = 0: chỉ theo điểm mix.")
+    playlist = st.selectbox("Playlist (phiên test)", player.playlists, format_func=lambda s: f"Playlist {s}", key="playlist")
+    alpha = st.slider("α", 0.0, 1.0, float(player.default_alpha), 0.05, key="alpha",
+                      help="α = 1: chỉ theo điểm gu. α = 0: chỉ theo điểm mix.")
     st.caption("← mix mượt · đúng gu →")
-    st.caption(f"Ứng viên: `{cfg.candidates.name}`")
+    if st.session_state.get("session") is None or st.session_state["session"].playlist_id != playlist:
+        st.session_state["session"] = player.start(playlist)
+    back, restart = st.columns(2)
+    if back.button("Quay lại", key="back", use_container_width=True):
+        st.session_state["session"] = player.back(st.session_state["session"])
+    if restart.button("Bắt đầu lại", key="restart", use_container_width=True):
+        st.session_state["session"] = player.restart(st.session_state["session"])
+    st.caption(f"Mô hình gu: {player.model} · mix theo luật")
 
-playing = player.now_playing(session_id)
+session = st.session_state["session"]
+queue = player.queue(session, alpha)
+for track_id in queue["track_id"]:  # nút chọn xử lý trước khi vẽ, để bài đang phát và hàng đợi cập nhật ngay
+    if st.session_state.get(f"choose_{track_id}"):
+        session = st.session_state["session"] = player.choose(session, track_id, alpha)
+        queue = player.queue(session, alpha)
+        break
+
+playing = player.now_playing(session)
 st.subheader("Bài đang phát")
 st.markdown(f"**{playing['track_name']}** · {playing['artist_name']}")
-bpm, camelot, energy = st.columns(3)
+bpm, camelot, energy, step = st.columns(4)
 bpm.metric("BPM", f"{playing['bpm']:.0f}")
 camelot.metric("Camelot", playing["camelot"])
 energy.metric("Năng lượng", f"{playing['energy']:.2f}")
-with st.expander("Seed: 5 bài đầu playlist"):
-    seed = player.seed(session_id)
-    st.markdown("\n".join(f"{i}. {t.track_name} · {t.artist_name} ({t.bpm:.0f} BPM, {t.camelot})" for i, t in enumerate(seed.itertuples(), 1)))
+step.metric("Bài đã chọn", len(session.chosen))
 
 st.subheader("Hàng đợi gợi ý")
-queue = player.queue(session_id, alpha)
+header = st.columns(QUEUE_COLUMNS)
+for col, label in zip(header, ["#", "Bài", "BPM", "Camelot", "Năng lượng", "Điểm gu", "Điểm mix", "Điểm cuối", "Giải thích", ""]):
+    col.markdown(f"**{label}**")
+for row in queue.itertuples():
+    cols = st.columns(QUEUE_COLUMNS)
+    cols[0].write(row.rank)
+    cols[1].write(f"{row.track_name} · {row.artist_name}")
+    cols[2].write(f"{row.bpm:.0f}")
+    cols[3].write(row.camelot)
+    cols[4].write(f"{row.energy:.2f}")
+    cols[5].write(f"{row.gu_norm:.2f}")
+    cols[6].write(f"{row.mix:.2f}")
+    cols[7].write(f"{row.final:.2f}")
+    cols[8].write(row.explanation)
+    cols[9].button("Chọn", key=f"choose_{row.track_id}")
+
+st.subheader("Lịch sử phiên")
+history = player.history(session)
 st.dataframe(
-    pd.DataFrame(
-        {
-            "#": queue["rank"],
-            "Bài": queue["track_name"],
-            "Nghệ sĩ": queue["artist_name"],
-            "BPM": queue["bpm"].round(0),
-            "Camelot": queue["camelot"],
-            "Năng lượng": queue["energy"],
-            "Điểm gu": queue["gu_norm"],
-            "Điểm mix": queue["mix"],
-            "Điểm cuối": queue["final"],
-        }
-    ),
+    history[["step", "source", "track_id", "track_name", "artist_name", "bpm", "camelot", "energy", "explanation"]],
     hide_index=True,
     column_config={
-        "BPM": st.column_config.NumberColumn(format="%.0f"),
-        "Năng lượng": TWO_DECIMALS,
-        "Điểm gu": TWO_DECIMALS,
-        "Điểm mix": TWO_DECIMALS,
-        "Điểm cuối": TWO_DECIMALS,
+        "step": "Bước", "source": "Nguồn", "track_id": None, "track_name": "Bài", "artist_name": "Nghệ sĩ",
+        "bpm": st.column_config.NumberColumn("BPM", format="%.0f"), "camelot": "Camelot",
+        "energy": st.column_config.NumberColumn("Năng lượng", format="%.2f"), "explanation": "Chuyển từ bài trước",
     },
 )

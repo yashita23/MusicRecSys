@@ -1,24 +1,26 @@
-"""Đọc app/config.toml: mọi đường dẫn dữ liệu app dùng đều nằm trong file này (#11)."""
+"""Đọc app/config.toml: đường dẫn dữ liệu app dùng nằm trong file này (#11; từ #21 là một thư mục artifacts/)."""
 from __future__ import annotations
 
 import tomllib
-from dataclasses import astuple, dataclass, fields
+from dataclasses import dataclass, fields
 from pathlib import Path
 
+from src.export_artifacts import DEMO, INDEX, MANIFEST, MIX_PARAMS, TRACKS, VECTORS
+
 DEFAULT_CONFIG = Path(__file__).with_name("config.toml")
+REQUIRED_FILES = (MANIFEST, TRACKS, VECTORS, INDEX, DEMO, MIX_PARAMS)  # mix_learned.npz là tùy chọn
 
 
 @dataclass(frozen=True)
 class AppConfig:
-    """Đường dẫn tuyệt đối tới các file app đọc; đường dẫn tương đối trong config tính theo thư mục chứa config."""
+    """Đường dẫn tuyệt đối tới thư mục artifacts/ (#20); đường dẫn tương đối trong config tính theo thư mục chứa config."""
 
-    tracks: Path
-    eval_targets: Path
-    candidates: Path
+    artifacts: Path
 
     @property
     def files(self) -> tuple[Path, ...]:
-        return astuple(self)
+        """Các file bắt buộc của artifacts/ (để báo thiếu và để nhận biết dữ liệu đổi)."""
+        return tuple(self.artifacts / name for name in REQUIRED_FILES)
 
     def missing_files(self) -> list[Path]:
         return [p for p in self.files if not p.is_file()]
