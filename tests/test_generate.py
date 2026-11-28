@@ -98,3 +98,27 @@ def test_real_taste_models_generate_full_chains_without_repeats(name):
         assert len(generated) == 10
         assert len(set(generated)) == 10, "không lặp bài trong chuỗi"
         assert not set(generated) & set(seed), "không gợi ý lại bài trong seed"
+
+
+@pytest.mark.parametrize("name", ["itemknn", "session_vector"])
+def test_chains_for_several_mixes_at_once_match_generating_each_mix_alone(name):
+    # Grid search #25 sinh chuỗi cho nhiều bộ trọng số cùng lúc, dùng chung ứng viên gu: kết quả phải như chạy riêng.
+    from src.rerank.generate import all_of, generate_chains_many
+    from src.rerank.mix_rule import MixWeights
+
+    data = make_fake_dataset(n_sessions=80, n_tracks=400, random_seed=5)
+    model = build_model(name, data)
+    seeds = [list(s) for s in data.eval_targets["seed_track_ids"][:25]]
+    rule = RuleMix(data.tracks)
+    mixes = [rule.with_weights(w) for w in (MixWeights(1.0, 0.0, 0.0), MixWeights(0.0, 0.0, 1.0), MixWeights(0.4, 0.4, 0.2))]
+    together = generate_chains_many(model, seeds, all_of(mixes), len(mixes), alpha=0.3)
+    assert together == [generate_chains(model, seeds, mix, alpha=0.3) for mix in mixes]
+
+
+def test_several_mixes_reaching_the_same_session_ask_the_taste_model_once():
+    from src.rerank.generate import all_of, generate_chains_many
+
+    model = RankedTaste()
+    chains = generate_chains_many(model, [SEED], all_of([no_mix, no_mix]), 2, alpha=1.0, length=3, n_candidates=20)
+    assert chains[0] == chains[1] == [["s4", "t0", "t1", "t2"]]
+    assert model.asked == [SEED, SEED + ["t0"], SEED + ["t0", "t1"]]  # như một mix: hai mix cùng đường đi dùng chung ứng viên

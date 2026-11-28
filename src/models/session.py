@@ -75,6 +75,27 @@ class SessionVectorTaste:
         scores = self.vectors @ session_vector(self.vectors, rows, self.decay).astype(self.vectors.dtype)
         return top_k_by_score(self.index.to_numpy(), scores, session, k)
 
+    def candidates_batch(self, sessions: Sequence[Sequence[str]], k: int = N_CANDIDATES) -> list[tuple[list[str], np.ndarray]]:
+        """Như candidates cho từng phiên, nhưng chấm cả lô bằng một phép nhân ma trận (sinh chuỗi trong grid search #25).
+
+        candidates_for_sessions tự dùng hàm này theo lô BATCH_SESSIONS phiên.
+        """
+        sessions = [list(s) for s in sessions]
+        rows = [self.index.get_indexer(s) for s in sessions]
+        has_vector = [bool((r != MISSING).any()) for r in rows]
+        out: list[tuple[list[str], np.ndarray] | None] = [None] * len(sessions)
+        scored = [i for i, ok in enumerate(has_vector) if ok]
+        if scored:
+            queries = np.stack([session_vector(self.vectors, rows[i], self.decay) for i in scored]).astype(self.vectors.dtype)
+            scores = np.ascontiguousarray((self.vectors @ queries.T).T)  # cùng chiều nhân với candidates: vector bài · vector phiên
+            ids = self.index.to_numpy()
+            for j, i in enumerate(scored):
+                out[i] = top_k_by_score(ids, scores[j], sessions[i], k)
+        for i, ok in enumerate(has_vector):
+            if not ok:
+                out[i] = self.fallback.candidates(sessions[i], k=k)
+        return out  # type: ignore[return-value]
+
     def embeddings(self) -> tuple[np.ndarray, pd.DataFrame]:
         """(vectors, index) theo docs/data-contract.md: item_embeddings/{model}.npy và {model}_tracks.parquet."""
         index = pd.DataFrame({"row": np.arange(len(self.index)), "track_id": self.index.to_numpy()})

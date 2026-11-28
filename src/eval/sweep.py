@@ -35,12 +35,17 @@ MAX_NDCG_DROP = 0.10  # spec §6: chọn α có % cặp mix được cao nhất 
 MODELS: dict[str, type] = {"itemknn": ItemKNN, "popularity": Popularity}
 
 
-def smoothness_seeds(eval_targets: pd.DataFrame, n: int = N_SMOOTH, random_seed: int = RANDOM_SEED) -> list[list[str]]:
-    """Seed của một mẫu cố định n phiên val (ít hơn n phiên thì lấy hết), theo thứ tự session_id."""
+def val_sample(eval_targets: pd.DataFrame, n: int = N_SMOOTH, random_seed: int = RANDOM_SEED) -> pd.DataFrame:
+    """Một mẫu cố định n phiên val của eval_targets (ít hơn n phiên thì lấy hết), theo thứ tự session_id."""
     val = eval_targets[eval_targets["split"] == VAL].sort_values("session_id")
     if len(val) > n:
         val = val.iloc[np.sort(np.random.default_rng(random_seed).choice(len(val), n, replace=False))]
-    return [list(seed) for seed in val["seed_track_ids"]]
+    return val
+
+
+def smoothness_seeds(eval_targets: pd.DataFrame, n: int = N_SMOOTH, random_seed: int = RANDOM_SEED) -> list[list[str]]:
+    """Seed của val_sample: các phiên dùng để sinh chuỗi đo độ mượt."""
+    return [list(seed) for seed in val_sample(eval_targets, n, random_seed)["seed_track_ids"]]
 
 
 def sweep(
@@ -77,11 +82,18 @@ def ndcg_threshold(table: pd.DataFrame) -> float:
     return (1 - MAX_NDCG_DROP) * float(at_one.iloc[0])
 
 
-def choose_alpha(table: pd.DataFrame) -> float:
-    """α có % cặp mix được cao nhất trong các α mà NDCG@10 ≥ ngưỡng (spec §6); hòa thì lấy α lớn hơn (ít đổi gu hơn)."""
+def best_row(table: pd.DataFrame):
+    """Nhãn dòng có % cặp mix được cao nhất trong các dòng mà NDCG@10 ≥ ngưỡng (spec §6).
+
+    Hòa thì lấy α lớn hơn (ít đổi gu hơn), rồi dòng đứng trước trong bảng (grid search #25: bộ w đứng trước trong lưới).
+    """
     ok = table[table["ndcg"] >= ndcg_threshold(table) - 1e-12]
-    best = ok.sort_values(["mixable_pct", "alpha"], ascending=[False, False]).iloc[0]
-    return float(best["alpha"])
+    return ok.sort_values(["mixable_pct", "alpha"], ascending=[False, False], kind="stable").index[0]
+
+
+def choose_alpha(table: pd.DataFrame) -> float:
+    """α của best_row: α có % cặp mix được cao nhất mà NDCG@10 giảm ≤ 10% so với α = 1."""
+    return float(table.loc[best_row(table), "alpha"])
 
 
 def _title(table: pd.DataFrame) -> str:

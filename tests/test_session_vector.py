@@ -67,3 +67,23 @@ def test_normalized_vectors_rank_by_cosine_and_are_what_gets_exported():
     assert list(scores) == pytest.approx([1.0607, 1.0, -1.0], abs=1e-4)
     vectors, _ = taste.embeddings()
     assert np.linalg.norm(vectors, axis=1) == pytest.approx(np.ones(5))
+
+
+def test_batch_candidates_match_scoring_each_session_alone():
+    # Chấm theo lô (grid search #25) phải ra đúng như từng phiên: loại bài trong phiên, phiên không bài nào có vector
+    # thì dùng mô hình dự phòng, phiên dài ngắn khác nhau.
+    from src.data.fake import FAKE_MODEL, make_fake_dataset
+
+    fake = make_fake_dataset(n_sessions=120, n_tracks=300, random_seed=7)
+    vectors, index = fake.embeddings[FAKE_MODEL]
+    taste = SessionVectorTaste(FAKE_MODEL, vectors, index["track_id"].tolist(), 0.7, Popularity().fit(fake.sessions))
+    known = set(index["track_id"])
+    unknown = [t for t in fake.tracks["track_id"] if t not in known][:2]
+    sessions = [list(s) for s in fake.eval_targets["seed_track_ids"][:30]]
+    sessions += [unknown, sessions[0] + sessions[1], [sessions[2][0]] * 3]
+    batch = taste.candidates_batch(sessions, k=20)
+    assert len(batch) == len(sessions)
+    for session, (ids, scores) in zip(sessions, batch):
+        alone_ids, alone_scores = taste.candidates(session, k=20)
+        assert ids == alone_ids
+        np.testing.assert_allclose(scores, alone_scores, rtol=1e-5, atol=1e-6)
