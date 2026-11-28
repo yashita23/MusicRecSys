@@ -5,7 +5,8 @@ import pytest
 
 from src.data.onion import HPCP_MEAN
 from src.features.camelot import camelot_code, parse_camelot
-from src.features.onion import energy_proxy, estimate_keys, hpcp_chroma, main, make_lastfm_tracks
+from src.data.schema import SchemaError
+from src.features.onion import bin_phase, center_offset, energy_proxy, estimate_keys, hpcp_chroma, main, make_lastfm_tracks, validate_lastfm_tracks
 from src.rerank.mix_rule import RuleMix
 
 C, D, E, F, G, A, B = 0, 2, 4, 5, 7, 9, 11  # pitch class, 0 = Đô (như cột key của MPD)
@@ -64,12 +65,8 @@ def test_key_strength_is_the_correlation_with_the_best_profile():
 
 def test_energy_proxy_is_the_loudness_percentile_within_0_and_1():
     loudness = pd.Series([-30.0, -8.0, -14.0, -14.0, -20.0])  # LUFS: càng gần 0 càng to
-    energy = energy_proxy(loudness)
-    assert ((energy > 0) & (energy <= 1)).all()
-    assert energy.iloc[1] == 1.0 and energy.iloc[0] == energy.min()  # to nhất 1, nhỏ nhất thấp nhất
-    assert energy.iloc[2] == energy.iloc[3]  # cùng loudness, cùng energy
-    order = loudness.sort_values().index
-    assert energy.loc[order].is_monotonic_increasing
+    # Hạng (trung bình khi hòa) / 5: −30 → 1, −20 → 2, −14 và −14 → (3 + 4) / 2 = 3,5, −8 → 5
+    assert energy_proxy(loudness).tolist() == pytest.approx([0.2, 1.0, 0.7, 0.7, 0.4])
 
 
 def tid(name: str) -> str:
@@ -120,7 +117,6 @@ def test_the_tracks_table_covers_session_tracks_with_rule_features_and_train_cou
     assert mix.key.tolist() == [0.8, 0.0]
 
     assert stats["tracks"] == 3
-    assert stats["octave_suspect"] == {"tracks_with_second_peak": 2, "suspect": 1, "rate": 0.5}
     for check in ("key_strength_vs_essentia", "check_offset_grouping", "check_essentia_like_36"):
         assert set(stats[check]) == {"pearson", "median_abs_diff"}
 
@@ -140,3 +136,37 @@ def test_cli_writes_tracks_and_a_log_from_the_onion_and_lastfm_outputs(tmp_path,
     log = json.loads((lastfm / "tracks_log.json").read_text(encoding="utf-8"))
     assert log == json.loads(capsys.readouterr().out)
     assert log["tracks"] == 3 and log["octave_suspect"]["suspect"] == 1
+    validate_lastfm_tracks(tracks)
+
+
+@pytest.mark.parametrize("offset, phase", [(0, 0), (1, 1), (-1, 2)])
+def test_bin_phase_finds_where_note_energy_sits_within_each_third_of_a_semitone(offset, phase):
+    # Năng lượng ở bin 3s → pha 0 (tâm nốt, đúng gốc bin); lệch +⅓ cung → pha 1; −⅓ cung → pha 2
+    assert bin_phase(to_hpcp36(C_MAJOR, offset)[None, :]).tolist() == [phase]
+
+
+def test_tracks_log_reports_bin_phase_shares_and_both_octave_denominators():
+    _, stats = make_lastfm_tracks(essentia_rows(), SESSIONS)
+    assert stats["bin_phase"] == {"center_offset_bins": 0.0, "centered_grouping_ok": True, "phase_0": 1.0, "phase_1": 0.0, "phase_2": 0.0}
+    assert stats["octave_suspect"] == {"tracks": 3, "tracks_with_second_peak": 2, "suspect": 1, "rate_of_second_peak": 0.5, "rate_of_all": 1 / 3}
+
+
+def test_validation_rejects_a_camelot_code_that_does_not_match_key_and_mode():
+    tracks, _ = make_lastfm_tracks(essentia_rows(), SESSIONS)
+    validate_lastfm_tracks(tracks)
+    with pytest.raises(SchemaError, match="camelot"):
+        validate_lastfm_tracks(tracks.assign(camelot=["8B", "8B", "8B"]))
+    with pytest.raises(SchemaError, match="energy"):
+        validate_lastfm_tracks(tracks.assign(energy=[0.0, 0.5, 1.0]))
+
+
+@pytest.mark.parametrize("offset, expected", [(0, 0.0), (1, 1.0), (-1, -1.0)])
+def test_center_offset_measures_how_far_note_energy_sits_from_bin_3s(offset, expected):
+    # Năng lượng dồn hết ở một pha → độ lệch đúng bằng pha đó (đơn vị bin); |độ lệch| < 0,5 mới giữ cách gộp có tâm
+    assert center_offset(to_hpcp36(C_MAJOR, offset)[None, :]) == pytest.approx(expected)
+
+
+def test_center_offset_between_two_phases_weighs_their_energy():
+    # Pha 0 và pha 1 bằng nhau, pha 2 trống → tâm ở giữa: +0,5 bin
+    hpcp = to_hpcp36(C_MAJOR, 0) + to_hpcp36(C_MAJOR, 1)
+    assert center_offset(hpcp[None, :]) == pytest.approx(0.5)
