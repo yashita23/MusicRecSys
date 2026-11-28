@@ -27,7 +27,7 @@ MixNext đáp ứng đủ các yêu cầu trong slide L0 sau ba bổ sung so v�
 | README cài đặt, chạy, kèm gói phần mềm dùng | `requirements.txt`; một lệnh chạy app từ `artifacts/` đã lưu; cách chạy lại pipeline trên Kaggle | 9 |
 | Báo cáo PDF 6 mục | Mỗi mục có nội dung cụ thể ở mục 13 | 13 |
 | Trình bày khoảng 15 phút, mọi thành viên tham gia, khớp với báo cáo | Mỗi người 5 phút, trình bày phần mình làm | 13 |
-| Khai báo rõ mã nguồn, gói phần mềm, công cụ, dữ liệu dùng lại (cả trong slide) | MPD, bộ đặc trưng âm thanh, implicit, gensim, SASRec.pytorch (pmixer), PyTorch, librosa, Streamlit; một bảng riêng trong báo cáo và một slide | 13 |
+| Khai báo rõ mã nguồn, gói phần mềm, công cụ, dữ liệu dùng lại (cả trong slide) | MPD, bộ đặc trưng âm thanh, Music4All-Onion (CIKM 2022, CC BY 4.0) và đặc trưng Essentia do tác giả bộ dữ liệu tính, implicit, gensim, SASRec.pytorch (pmixer), PyTorch, librosa, Streamlit; một bảng riêng trong báo cáo và một slide | 13 |
 
 ### Tiêu chí chấm điểm
 
@@ -87,6 +87,7 @@ Dữ liệu là playlist từ Spotify MPD, ghép với đặc trưng âm thanh t
 | Spotify Million Playlist Dataset, bản sao Kaggle `himanshuwagh/spotify-million` | Phiên nghe để học gu | 1 triệu playlist; chỉ dùng tập con. AIcrowd đã gỡ bản chính thức, đây là bản sao không chính thức (ADR 0001) |
 | `krishsharma0413/2-million-songs-from-mpd-with-audio-features` (Kaggle) | tempo, key, mode, energy | Làm riêng cho 2,26 triệu bài của MPD, khóa `track_uri`; dự phòng `rodolfofigueroa/spotify-12m-songs` (~1,2 triệu bài) |
 | FMA + librosa (dự phòng) | Tự trích BPM và tông | Chỉ dùng nếu ghép thất bại, hoặc cho phần phát nhạc |
+| Music4All-Onion (Moscati và cộng sự, CIKM 2022), Zenodo record 15394646, CC BY 4.0 (mở rộng #54–#57) | Bộ thứ hai cho phần điểm mix: lịch sử nghe last.fm (253 triệu lượt, 119 nghìn user) và đặc trưng Essentia (BPM, HPCP, loudness) | Không có nhãn tông và energy kiểu Spotify: tông tự ước lượng từ HPCP, energy thay thế = hạng phần trăm loudness (#56). Phiên cắt theo khoảng nghỉ 30 phút (#55) |
 
 Spotify đã hạn chế API audio features cho app mới, nên không dựa vào việc gọi API để lấy thêm đặc trưng.
 
