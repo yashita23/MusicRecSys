@@ -38,6 +38,10 @@ _Avoid_: điểm chuyển bài, điểm mượt, transition score
 Điểm mix do hai bộ mã hóa học từ các cặp bài liền nhau trong playlist thật.
 _Avoid_: điểm mix học từ dữ liệu, contrastive score
 
+**energy thay thế** (energy proxy):
+Ở bộ phụ last.fm (#56), energy là hạng phần trăm của độ to (loudness EBU R128) trong tập bài, trong (0, 1]; khác energy của Spotify, nên |Δenergy| ở đây là khoảng cách theo hạng.
+_Avoid_: energy (khi chưa nói rõ bộ dữ liệu)
+
 **Điểm cuối** (final score):
 Điểm dùng để xếp lại ứng viên, bằng α · gu_norm + (1 − α) · điểm mix.
 

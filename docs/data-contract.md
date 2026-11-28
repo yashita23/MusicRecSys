@@ -226,6 +226,28 @@ Kaggle Dataset mixnext-lastfm (notebook 10, #55; #56 thêm tracks.parquet)
 - Kiểm tra: `src.data.lastfm.validate_lastfm_sessions` (không dùng `validate_sessions` vì track_id 16 ký tự).
 - `lastfm_log.json`: phễu (lượt, phiên, bài, user sau từng bước), độ nhạy theo khoảng nghỉ 15/30/60 phút (số phiên, số cặp liền nhau), tỉ lệ lấy mẫu user, thống kê từng split.
 
+### lastfm/tracks.parquet (#56)
+
+Mọi bài có trong `lastfm/sessions.parquet`, mỗi bài một dòng. Có đủ cột `track_id`, `bpm`, `camelot`, `energy` nên `RuleMix`, `smoothness` và điểm mix học chạy được không cần sửa.
+
+| cột | kiểu | ràng buộc |
+| --- | --- | --- |
+| `track_id` | string | ID 16 ký tự của Music4All-Onion; duy nhất |
+| `bpm` | float | `rhythm.bpm` của Essentia; > 0 |
+| `key` | int | 0–11, 0 = Đô; **ước lượng** bằng Krumhansl–Schmuckler trên HPCP 36 bin (bin 0 = La). Chroma phẳng (không có tông) ghi 0, `mode` 1, `key_strength` 0 và được đếm trong `tracks_log.json` |
+| `mode` | int | 1 = trưởng, 0 = thứ (ước lượng cùng `key`) |
+| `camelot` | string | `camelot_code(key, mode)` |
+| `energy` | float | **thay thế**: hạng phần trăm của `lowlevel.loudness_ebu128.integrated` trong tập bài, trong (0, 1]; không cùng nghĩa với energy của Spotify |
+| `key_strength` | float | tương quan Pearson với hồ sơ tông tốt nhất, trong [−1, 1] |
+| `n_occurrences` | int | số lượt trong các phiên train của last.fm |
+
+- Kiểm tra: `src.features.onion.validate_lastfm_tracks` (cột, track_id, bpm > 0, `camelot` khớp `key`/`mode`, energy trong (0, 1]).
+- `tracks_log.json`:
+  - `bin_phase`: phép kiểm tra gốc bin có ngưỡng: độ lệch trung bình của tâm nốt so với bin 3s phải trong ±0,5 bin (`centered_grouping_ok`), kèm tỉ lệ bài theo pha;
+  - `key_strength_vs_essentia`: Pearson và độ lệch trung vị so với `tonal.key_krumhansl.strength`; `check_offset_grouping`, `check_essentia_like_36`: hai đối chứng (không dùng để chọn; so độ mạnh không phát hiện được nhầm gốc La/Đô, xem `src/features/onion.py`);
+  - `octave_suspect`: số bài nghi lỗi nhịp gấp đôi/một nửa, tỉ lệ trên số bài có đỉnh nhịp thứ hai và trên mọi bài;
+  - `modes`: số bài trưởng, thứ, phẳng.
+
 ## Kiểm tra
 
 ```python
