@@ -1,0 +1,80 @@
+% Báo cáo bài tập lớn MixNext (khung: ticket #22; nội dung: #29; spec §13, 6 mục theo L0).
+% Biên dịch ở thư mục reports/report/:  tectonic report.tex   (hoặc Overleaf, compiler XeLaTeX)
+% Mỗi mục một file trong sections/, đầu file ghi vai phụ trách. Chỗ còn phải viết đánh dấu bằng \canviet{...}.
+\documentclass[12pt,a4paper]{article}
+\usepackage[a4paper,hmargin=2.5cm,vmargin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{fontspec}
+\setmainfont{texgyretermes}[Extension=.otf, UprightFont=*-regular, BoldFont=*-bold,
+  ItalicFont=*-italic, BoldItalicFont=*-bolditalic]  % như proposal.tex: chạy được cả Tectonic lẫn Overleaf, đủ dấu tiếng Việt
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{xurl}  % \path{...} ngắt dòng được ở mọi ký tự (tên dataset dài trong bảng)
+\usepackage[hidelinks]{hyperref}
+
+% Mọi hình để trong img/ (đường dẫn tính từ reports/report/; \IfFileExists không dùng \graphicspath), để thư mục này tự đủ khi upload lên Overleaf
+\setlist{nosep,leftmargin=1.4em}
+\setlength{\parskip}{0.4em}
+
+% Chỗ còn phải viết: chữ đỏ nghiêng, tìm "canviet" trong sections/ để biết còn thiếu gì.
+\newcommand{\canviet}[1]{{\color{red!70!black}\itshape [Cần viết: #1]}}
+% Vai phụ trách một mục (A, B, C theo spec §10).
+\newcommand{\phutrach}[1]{\par{\small\color{black!55}Phụ trách: #1}\par}
+% Hình: có file thì chèn, chưa có thì hiện khung chờ kèm tên file và ticket tạo ra nó.
+\newcommand{\hinh}[3]{%  #1 file, #2 chú thích, #3 ticket tạo hình
+  \begin{figure}[htbp]\centering
+  \IfFileExists{#1}{\includegraphics[width=0.85\linewidth]{#1}}%
+    {\fbox{\parbox[c][4cm][c]{0.8\linewidth}{\centering\small Chờ hình \texttt{\detokenize{#1}} (#3)}}}
+  \caption{#2}\end{figure}}
+
+\begin{document}
+
+\begin{titlepage}
+  \centering
+  {\large ĐẠI HỌC BÁCH KHOA HÀ NỘI · MÔN IT4613}\\[3cm]
+  {\Huge\bfseries MixNext}\\[0.6cm]
+  {\Large Gợi ý bài hát tiếp theo vừa hợp gu vừa chuyển bài mượt}\\[0.3cm]
+  {\large\itshape Transition-aware Playlist Continuation}\\[2.5cm]
+  {\large Báo cáo bài tập lớn}\\[1.5cm]
+  \begin{tabular}{llll}
+    \toprule
+    \textbf{Vai} & \textbf{Họ tên} & \textbf{MSSV} & \textbf{Phụ trách chính} \\
+    \midrule
+    \canviet{A} & Nguyễn Hoàng Vũ  & 20235251 & dữ liệu, đặc trưng, điểm mix \\
+    \canviet{B} & Bùi Công Hoan    & 20235083 & mô hình gu, đánh giá \\
+    \canviet{C} & Nguyễn Công Minh & 20235161 & xếp lại, giải thích, demo \\
+    \bottomrule
+  \end{tabular}\\[0.4cm]
+  {\small \canviet{nhóm ghép đúng vai A/B/C với từng người rồi bỏ đánh dấu}}
+  \vfill
+  {\large 12/2026}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\input{sections/1_gioi_thieu}
+\input{sections/2_phuong_phap}
+\input{sections/3_chuc_nang}
+\input{sections/4_dung_lai}
+\input{sections/5_kho_khan}
+\input{sections/6_ket_luan}
+
+\begin{thebibliography}{99}
+  \bibitem{mpd} C.-W. Chen, P. Lamere, M. Schedl, H. Zamani. \emph{RecSys Challenge 2018: Automatic Music Playlist Continuation}. RecSys 2018.
+  \bibitem{als} Y. Hu, Y. Koren, C. Volinsky. \emph{Collaborative Filtering for Implicit Feedback Datasets}. ICDM 2008.
+  \bibitem{item2vec} O. Barkan, N. Koenigstein. \emph{Item2Vec: Neural Item Embedding for Collaborative Filtering}. IEEE MLSP 2016.
+  \bibitem{w2vrec} H. Caselles-Dupré, F. Lesaint, J. Royo-Letelier. \emph{Word2vec applied to Recommendation: Hyperparameters Matter}. RecSys 2018.
+  \bibitem{sasrec} W.-C. Kang, J. McAuley. \emph{Self-Attentive Sequential Recommendation}. ICDM 2018.
+  \bibitem{sasrec_ce} A. Klenitskiy, A. Vasilev. \emph{Turning Dross Into Gold Loss: is BERT4Rec really better than SASRec?}. RecSys 2023.
+  \bibitem{infonce} A. van den Oord, Y. Li, O. Vinyals. \emph{Representation Learning with Contrastive Predictive Coding}. arXiv:1807.03748, 2018.
+  \bibitem{krumhansl} C. L. Krumhansl. \emph{Cognitive Foundations of Musical Pitch}. Oxford University Press, 1990.
+  \bibitem{onion} M. Moscati, E. Parada-Cabaleiro, Y. Deldjoo, E. Zangerle, M. Schedl. \emph{Music4All-Onion: A Large-Scale Multi-faceted Content-Centric Music Recommendation Dataset}. CIKM 2022.
+\end{thebibliography}
+
+\end{document}

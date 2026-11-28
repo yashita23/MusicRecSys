@@ -1,0 +1,23 @@
+% Mục 5 theo L0: Khó khăn và cách vượt qua (spec §13). Mỗi vai viết mục con của mình.
+\section{Khó khăn và cách vượt qua}
+\phutrach{A, B, C (mỗi người một mục con)}
+
+\subsection{Dữ liệu (A)}
+\begin{itemize}
+  \item \canviet{MPD chính thức bị gỡ: dùng bản sao Kaggle (ADR 0001)}
+  \item \canviet{API audio features của Spotify bị khóa; tỉ lệ ghép đặc trưng âm thanh (99,89\% bài dùng được)}
+  \item \canviet{Music4All-Onion: số bài Essentia không khớp README; ước lượng tông từ HPCP}
+\end{itemize}
+
+\subsection{Mô hình và đánh giá (B)}
+\begin{itemize}
+  \item \canviet{RecBole không chạy trên Kaggle Python 3.13: tự chuyển SASRec.pytorch (ADR 0002)}
+  \item \canviet{RAM trên Kaggle khi huấn luyện và sinh ứng viên}
+\end{itemize}
+
+\subsection{Demo và tích hợp (C)}
+\begin{itemize}
+  \item \canviet{NDCG giảm khi xếp lại theo điểm mix}
+  \item \canviet{app không được cần torch: xuất vector và trọng số ra numpy (artifacts/)}
+  \item \canviet{không phát được âm thanh: demo chỉ gợi ý}
+\end{itemize}

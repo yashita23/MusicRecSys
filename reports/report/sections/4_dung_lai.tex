@@ -1,0 +1,58 @@
+% Mục 4 theo L0: Phương pháp, phần mềm, dữ liệu dùng lại (spec §13). Phụ trách: C (cũng làm slide khai báo).
+% Khi thêm thư viện hay nguồn mới, thêm một dòng ở đây; phiên bản lấy theo requirements.txt và app/requirements.txt.
+\section{Phương pháp, phần mềm, dữ liệu dùng lại}
+\phutrach{C}
+
+\subsection{Dữ liệu}
+\begin{longtable}{@{}p{0.27\linewidth}p{0.4\linewidth}p{0.25\linewidth}@{}}
+\toprule
+Nguồn & Dùng vào việc gì & Giấy phép, ghi chú \\
+\midrule\endhead
+Million Playlist Dataset \cite{mpd}, bản sao không chính thức \path{himanshuwagh/spotify-million} trên Kaggle & Phiên (playlist) để huấn luyện và đánh giá & Bản chính thức trên AIcrowd đã bị gỡ; giấy phép MPD cấm phân phối lại nên dữ liệu không nằm trong repo (ADR 0001) \\
+\path{krishsharma0413/2-million-songs-from-mpd-with-audio-features} (Kaggle) & Đặc trưng âm thanh tempo, key, mode, energy cho bài của MPD & Thay cho API audio features của Spotify, bị khóa từ 27/11/2024 \\
+Music4All-Onion \cite{onion} (Zenodo 15394646) & Đặc trưng Essentia (HPCP, BPM, loudness) cho bộ phụ last.fm & CC BY 4.0; dùng đặc trưng đã tính sẵn, nhóm không chạy Essentia \\
+Lịch sử nghe last.fm đi kèm Music4All-Onion & Bộ phụ: phiên cắt theo khoảng nghỉ 30 phút & CC BY 4.0 \\
+\bottomrule
+\end{longtable}
+
+\subsection{Phần mềm}
+\begin{longtable}{@{}p{0.27\linewidth}p{0.4\linewidth}p{0.25\linewidth}@{}}
+\toprule
+Thư viện & Dùng vào việc gì & Giấy phép, ghi chú \\
+\midrule\endhead
+numpy, pandas, pyarrow, scipy & Xử lý dữ liệu, ma trận thưa, file parquet & BSD / Apache-2.0 \\
+implicit 0.7.3 & Huấn luyện ALS & MIT \\
+gensim 4.4.0 & Huấn luyện item2vec (Word2Vec skip-gram) & LGPL-2.1 \\
+PyTorch 2.11 & Huấn luyện SASRec và điểm mix học & BSD-3 \\
+SASRec.pytorch (pmixer) & Mã mạng SASRec, đã sửa (\texttt{src/models/sasrec/}) & Apache-2.0; nguồn, commit và thay đổi ghi ở \texttt{NOTICE.md} (ADR 0002) \\
+Streamlit 1.67 & Giao diện demo & Apache-2.0 \\
+Plotly & \canviet{C: biểu đồ BPM/năng lượng trong demo (\#28); xóa dòng nếu không dùng} & MIT \\
+pytest & Kiểm thử & MIT \\
+\bottomrule
+\end{longtable}
+Nhóm không dùng librosa (dự kiến ở spec): mọi đặc trưng âm thanh lấy từ bộ đã tính sẵn.
+
+\subsection{Phương pháp từ bài báo}
+\begin{longtable}{@{}p{0.27\linewidth}p{0.67\linewidth}@{}}
+\toprule
+Phương pháp & Dùng ở đâu \\
+\midrule\endhead
+ALS cho phản hồi ngầm \cite{als} & Mô hình gu ALS \\
+item2vec \cite{item2vec}, siêu tham số theo \cite{w2vrec} & Mô hình gu item2vec (ns\_exponent âm) \\
+SASRec \cite{sasrec}, hàm mất mát CE với mẫu âm \cite{sasrec_ce} & Mô hình gu SASRec \\
+InfoNCE \cite{infonce} & Hàm mất mát của điểm mix học \\
+Hồ sơ tông Krumhansl--Schmuckler \cite{krumhansl} & Ước lượng tông từ HPCP ở bộ phụ last.fm \\
+Vòng Camelot, luật mix của DJ & Điểm mix theo luật \\
+Đánh giá theo RecSys Challenge 2018 \cite{mpd} & Bài toán nối tiếp playlist \\
+\bottomrule
+\end{longtable}
+
+\subsection{Phần nhóm tự viết}
+\begin{itemize}
+  \item Xử lý dữ liệu: ghép MPD với đặc trưng, lọc, chia tập, kiểm tra schema (\texttt{src/data/}); nhập Music4All-Onion và last.fm.
+  \item Đặc trưng: Camelot, lệch BPM, ước lượng tông từ HPCP, energy thay thế (\texttt{src/features/}).
+  \item Baseline (Popularity, item-kNN liền kề) và mô hình gu: vector phiên, bọc ALS và item2vec, huấn luyện và sinh ứng viên SASRec (\texttt{src/models/}).
+  \item Điểm mix theo luật, điểm mix học, xếp lại, sinh tham lam, dòng giải thích (\texttt{src/rerank/}).
+  \item Đánh giá: độ chính xác, độ mượt, quét $\alpha$ (\texttt{src/eval/}); notebook Kaggle (\texttt{notebooks/}).
+  \item App Streamlit (\texttt{app/}) và script xuất \texttt{artifacts/}.
+\end{itemize}
