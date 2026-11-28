@@ -10,6 +10,7 @@ from collections.abc import Mapping
 import numpy as np
 
 from src.features.camelot import compatible_keys, parse_camelot, same_key
+from src.rerank.mix_rule import BPM_ZERO
 
 
 def _key_phrase(camelot_a: str, camelot_b: str) -> str:
@@ -22,10 +23,11 @@ def _key_phrase(camelot_a: str, camelot_b: str) -> str:
 
 
 def _bpm_phrase(bpm_a: float, bpm_b: float) -> str:
-    """Ghi chú (nhịp ×2) hoặc (nhịp ½) khi b gần 2a hoặc a/2 hơn là gần a, đúng trường hợp luật tính lệch theo nhịp đó."""
+    """Ghi chú (nhịp ×2) hoặc (nhịp ½) khi b khớp 2a hoặc a/2 (lệch ≤ BPM_ZERO = 12%, ngưỡng luật còn cho điểm BPM)
+    và gần hơn mức lệch thường; xa hơn thì nhân/chia đôi cũng không giúp mix được nên không ghi."""
     plain, doubled, halved = abs(bpm_b - bpm_a) / bpm_a, abs(bpm_b - 2 * bpm_a) / (2 * bpm_a), abs(bpm_b - bpm_a / 2) / (bpm_a / 2)
     note = ""
-    if min(doubled, halved) < plain:
+    if min(doubled, halved) < plain and min(doubled, halved) <= BPM_ZERO:
         note = " (nhịp ×2)" if doubled < halved else " (nhịp ½)"
     return f"BPM {int(np.round(bpm_a))}→{int(np.round(bpm_b))}{note}"
 

@@ -21,6 +21,9 @@ def track(bpm: float, camelot: str, energy: float) -> dict:
         # BPM khớp nhờ gấp đôi / một nửa (luật xét cả ×2 và ×½)
         (track(70, "8A", 0.5), track(141, "8A", 0.5), "cùng tông 8A · BPM 70→141 (nhịp ×2) · năng lượng 0,50→0,50"),
         (track(140, "8A", 0.5), track(71, "8A", 0.5), "cùng tông 8A · BPM 140→71 (nhịp ½) · năng lượng 0,50→0,50"),
+        # ×2 gần hơn mức thường nhưng vẫn lệch xa (214 so với 152: 29% > 12%, luật cho 0 điểm BPM): không ghi nhãn
+        (track(107, "3A", 0.5), track(152, "3A", 0.5), "cùng tông 3A · BPM 107→152 · năng lượng 0,50→0,50"),
+        (track(146, "8A", 0.5), track(92, "8A", 0.5), "cùng tông 8A · BPM 146→92 · năng lượng 0,50→0,50"),
         # BPM làm tròn để đọc; 99,6 → 100
         (track(99.6, "12B", 0.333), track(101.2, "1B", 0.9), "tông kề 12B→1B · BPM 100→101 · năng lượng 0,33→0,90"),
     ],
