@@ -3,7 +3,8 @@
     python -m src.eval.grid --input /kaggle/input --out /kaggle/working/out      # ghi grid.csv và mix_params.json
 
 Lưới: 21 bộ w (bước 0,2, tổng bằng 1) × 11 α cho điểm mix theo luật; 11 α cho điểm mix học nếu có mix_learned.npz.
-Mô hình gu là mô hình app dùng (mặc định ALS: vector bài và decay đã chọn ở #14), nên cấu hình chọn ra khớp với demo.
+Mô hình gu là mô hình app dùng: chọn như export_artifacts (NDCG@10 val cao nhất trong {model}_params.json, hiện là ALS),
+với vector bài và decay đã chọn, nên cấu hình chọn ra khớp với demo.
 Độ chính xác và độ mượt đo trên cùng một mẫu phiên val (val_sample, như đo độ mượt ở #19):
 - độ chính xác: ứng viên của seed chấm một lần; mỗi cấu hình chỉ còn phép tính mảng (SeedCandidates);
 - độ mượt: chuỗi tham lam 10 bài; các cấu hình cùng α sinh chung (generate_chains_many) để dùng chung ứng viên gu.
@@ -15,7 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Hashable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -27,11 +28,11 @@ from src.eval.accuracy import MISS, hit_rate, mrr, ndcg
 from src.eval.run import K, Accuracy
 from src.eval.smoothness import smoothness
 from src.eval.sweep import ALPHAS, MAX_NDCG_DROP, N_SMOOTH, RANDOM_SEED, best_row, val_sample
-from src.export_artifacts import MIX_LEARNED, MIX_PARAMS, MixParams, _find, _find_optional
+from src.export_artifacts import MIX_LEARNED, MIX_PARAMS, MODELS, MixParams, choose_model, find_file, find_optional_file
 from src.models.base import TasteModel, candidates_for_sessions
 from src.models.popularity import Popularity
 from src.models.session import SessionVectorTaste
-from src.rerank.combine import MixScorer, gu_norm
+from src.rerank.combine import MixScorer, final_scores, gu_norm
 from src.rerank.generate import generate_chains_many
 from src.rerank.mix_learned import LearnedMix, MixEncoders
 from src.rerank.mix_rule import MixComponents, MixWeights, RuleMix
@@ -88,7 +89,7 @@ class SeedCandidates:
         """HitRate@k, NDCG@k, MRR sau khi xếp lại cả danh sách theo điểm cuối = α · gu_norm + (1 − α) · điểm mix."""
         if mix_scores.shape != self.gu_norm.shape:
             raise ValueError(f"điểm mix phải có shape {self.gu_norm.shape}, đang có {mix_scores.shape}")
-        final = alpha * self.gu_norm + (1 - alpha) * mix_scores
+        final = final_scores(self.gu_norm, mix_scores, alpha)
         rows = np.arange(len(final))
         found = self.target_pos >= 0
         target = final[rows, np.where(found, self.target_pos, 0)][:, None]
@@ -111,7 +112,7 @@ class Choice:
     rule_weights: MixWeights
     rule_alpha: float
     learned_alpha: float | None
-    rows: list  # nhãn các dòng được chọn trong bảng (để đánh dấu cột chosen)
+    rows: list[Hashable]  # nhãn (index) các dòng được chọn trong bảng, để đánh dấu cột chosen
     warnings: list[str]
 
 
@@ -119,7 +120,8 @@ def choose(table: pd.DataFrame) -> Choice:
     """Mỗi loại mix một cấu hình theo best_row (spec §6): luật chọn cả w và α, mix học chỉ chọn α.
 
     Ngưỡng NDCG tính theo α = 1 của chính loại mix đó. Chỉ α = 1 đạt ngưỡng nghĩa là xếp lại không giúp được gì mà
-    không mất quá 10% NDCG: ghi vào warnings để báo cả nhóm trước khi chỉnh (issue #25).
+    không mất quá 10% NDCG: ghi vào warnings để báo cả nhóm trước khi chỉnh (issue #25). Khi đó mọi bộ w hòa nhau ở
+    α = 1 (w không ảnh hưởng điểm cuối), nên giữ trọng số mặc định của #12 thay vì bộ w đứng đầu lưới.
     """
     rows, warnings, alphas = [], [], {}
     for mix in (RULE, LEARNED):
@@ -134,7 +136,8 @@ def choose(table: pd.DataFrame) -> Choice:
     if RULE not in alphas:
         raise ValueError("bảng lưới phải có các dòng mix theo luật (mix = 'rule')")
     rule = table.loc[rows[0]]
-    weights = MixWeights(float(rule["w_bpm"]), float(rule["w_key"]), float(rule["w_energy"]))
+    weights = (MixWeights() if np.isclose(alphas[RULE], 1.0)
+               else MixWeights(float(rule["w_bpm"]), float(rule["w_key"]), float(rule["w_energy"])))
     return Choice(weights, alphas[RULE], alphas.get(LEARNED), rows, warnings)
 
 
@@ -188,20 +191,27 @@ def grid_search(
 
 def taste_model(root: Path, model: str, tracks: pd.DataFrame) -> SessionVectorTaste:
     """Mô hình gu như app dựng từ artifacts/ (Artifacts.taste_model): vector bài, decay đã chọn, dự phòng Popularity."""
-    params = json.loads(_find(root, f"{model}_params.json").read_text(encoding="utf-8"))
-    vectors = np.load(_find(root, f"{model}.npy"))
-    index = pd.read_parquet(_find(root, f"{model}_tracks.parquet")).sort_values("row")
+    params = json.loads(find_file(root, f"{model}_params.json").read_text(encoding="utf-8"))
+    vectors = np.load(find_file(root, f"{model}.npy"))
+    index = pd.read_parquet(find_file(root, f"{model}_tracks.parquet")).sort_values("row")
     return SessionVectorTaste(model, vectors, index["track_id"].tolist(), float(params["params"]["decay"]),
                               Popularity.from_tracks(tracks))
 
 
-def run_grid(input_dir: str | Path, out_dir: str | Path, model: str = "als", n_sessions: int = N_SMOOTH,
+def run_grid(input_dir: str | Path, out_dir: str | Path, model: str | None = None, n_sessions: int = N_SMOOTH,
              random_seed: int = RANDOM_SEED, log: Callable[[str], None] = print) -> tuple[pd.DataFrame, Choice]:
-    """Đọc dữ liệu dưới input_dir (tìm theo tên file như export_artifacts), chạy lưới, ghi grid.csv và mix_params.json."""
+    """Đọc dữ liệu dưới input_dir (tìm theo tên file như export_artifacts), chạy lưới, ghi grid.csv và mix_params.json.
+
+    model = None: chọn như export_artifacts (choose_model: NDCG@10 val cao nhất trong {model}_params.json), để cấu hình
+    chọn ra là của đúng mô hình gu mà app sẽ dùng.
+    """
     root = Path(input_dir)
-    tracks = pd.read_parquet(_find(root, "tracks.parquet"))
-    eval_targets = pd.read_parquet(_find(root, "eval_targets.parquet"))
-    learned_path = _find_optional(root, MIX_LEARNED)
+    if model is None:
+        model = choose_model({m: p for m in MODELS if (p := find_optional_file(root, f"{m}_params.json")) is not None})[0]
+    log(f"mô hình gu: {model}")
+    tracks = pd.read_parquet(find_file(root, "tracks.parquet"))
+    eval_targets = pd.read_parquet(find_file(root, "eval_targets.parquet"))
+    learned_path = find_optional_file(root, MIX_LEARNED)
     learned = None if learned_path is None else LearnedMix(tracks, MixEncoders.load(learned_path))
     table = grid_search(taste_model(root, model, tracks), tracks, eval_targets, learned, n_sessions=n_sessions,
                         random_seed=random_seed, log=log)
@@ -223,7 +233,8 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
     ap.add_argument("--input", required=True, help="Thư mục gốc chứa tracks, eval_targets, {model}.npy, {model}_tracks.parquet, "
                     "{model}_params.json và (nếu có) mix_learned.npz")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--model", default="als", help="Mô hình gu có embedding (mặc định als, mô hình app dùng)")
+    ap.add_argument("--model", choices=MODELS, help="Mô hình gu có embedding; mặc định chọn như export_artifacts "
+                    "(NDCG@10 val cao nhất), tức mô hình app dùng")
     ap.add_argument("--n-sessions", type=int, default=N_SMOOTH, help="Số phiên val của mẫu")
     ap.add_argument("--random-seed", type=int, default=RANDOM_SEED)
     args = ap.parse_args(argv)

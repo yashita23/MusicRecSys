@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import re
 import time
+from collections.abc import Hashable
 from dataclasses import asdict
 from pathlib import Path
 
@@ -82,7 +83,7 @@ def ndcg_threshold(table: pd.DataFrame) -> float:
     return (1 - MAX_NDCG_DROP) * float(at_one.iloc[0])
 
 
-def best_row(table: pd.DataFrame):
+def best_row(table: pd.DataFrame) -> Hashable:
     """Nhãn dòng có % cặp mix được cao nhất trong các dòng mà NDCG@10 ≥ ngưỡng (spec §6).
 
     Hòa thì lấy α lớn hơn (ít đổi gu hơn), rồi dòng đứng trước trong bảng (grid search #25: bộ w đứng trước trong lưới).

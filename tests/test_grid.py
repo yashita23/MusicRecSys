@@ -108,6 +108,21 @@ def test_warns_when_only_alpha_one_meets_the_threshold():
     assert len(chosen.warnings) == 1 and "rule" in chosen.warnings[0]
 
 
+def test_when_only_alpha_one_passes_the_default_weights_are_kept_instead_of_the_first_grid_entry():
+    from src.eval.grid import choose
+
+    # Ở α = 1 mọi bộ w hòa nhau (w không ảnh hưởng điểm cuối); không được đổi app sang bộ đầu lưới (1/0/0, chỉ BPM).
+    table = pd.DataFrame([
+        grid_row("rule", (1.0, 0.0, 0.0), 1.0, 0.10, 5.0),
+        grid_row("rule", (1.0, 0.0, 0.0), 0.5, 0.05, 30.0),
+        grid_row("rule", (0.4, 0.4, 0.2), 1.0, 0.10, 5.0),
+        grid_row("rule", (0.4, 0.4, 0.2), 0.5, 0.05, 40.0),
+    ])
+    chosen = choose(table)
+    assert (chosen.rule_weights, chosen.rule_alpha) == (MixWeights(0.4, 0.4, 0.2), 1.0)
+    assert chosen.warnings
+
+
 def write_grid_inputs(fake, root):
     """Bố cục như Kaggle Input: dữ liệu đã chia, embedding và params của ALS (dùng vector giả), mix_learned.npz."""
     import json
@@ -148,7 +163,7 @@ def test_cli_writes_grid_table_and_mix_params_that_artifacts_pick_up(fake, tmp_p
     learned = saved[saved["chosen"] & (saved["mix"] == "learned")].iloc[0]
     assert params.rule_weights == MixWeights(rule["w_bpm"], rule["w_key"], rule["w_energy"])
     assert (params.rule_alpha, params.learned_alpha) == (rule["alpha"], learned["alpha"])
-    assert "#25" in params.source
+    assert "#25" in params.source and "als" in params.source  # mô hình chọn như export_artifacts: chỉ có als_params.json
 
     artifacts = export(tmp_path / "input", tmp_path / "artifacts", n_demo=5)  # notebook 14 Add Input cả output grid
     assert artifacts.mix_params == params

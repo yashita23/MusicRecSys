@@ -26,6 +26,11 @@ class RankedTaste:
         return ids, np.arange(len(ids), 0, -1, dtype=float)
 
 
+def all_of(mixes):
+    """Gộp nhiều hàm điểm mix thành một MultiMixScorer (mỗi hàm một cấu hình) cho generate_chains_many."""
+    return lambda current, candidate_ids: [np.asarray(mix(current, candidate_ids), dtype=float) for mix in mixes]
+
+
 def no_mix(current_track_id: str, candidate_ids: Sequence[str]) -> np.ndarray:
     return np.zeros(len(candidate_ids))
 
@@ -103,7 +108,7 @@ def test_real_taste_models_generate_full_chains_without_repeats(name):
 @pytest.mark.parametrize("name", ["itemknn", "session_vector"])
 def test_chains_for_several_mixes_at_once_match_generating_each_mix_alone(name):
     # Grid search #25 sinh chuỗi cho nhiều bộ trọng số cùng lúc, dùng chung ứng viên gu: kết quả phải như chạy riêng.
-    from src.rerank.generate import all_of, generate_chains_many
+    from src.rerank.generate import generate_chains_many
     from src.rerank.mix_rule import MixWeights
 
     data = make_fake_dataset(n_sessions=80, n_tracks=400, random_seed=5)
@@ -116,7 +121,7 @@ def test_chains_for_several_mixes_at_once_match_generating_each_mix_alone(name):
 
 
 def test_several_mixes_reaching_the_same_session_ask_the_taste_model_once():
-    from src.rerank.generate import all_of, generate_chains_many
+    from src.rerank.generate import generate_chains_many
 
     model = RankedTaste()
     chains = generate_chains_many(model, [SEED], all_of([no_mix, no_mix]), 2, alpha=1.0, length=3, n_candidates=20)

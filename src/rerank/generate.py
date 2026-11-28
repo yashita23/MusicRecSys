@@ -15,7 +15,7 @@ import numpy as np
 
 from src.data.schema import N_CANDIDATES
 from src.models.base import TasteModel, candidates_for_sessions
-from src.rerank.combine import MixScorer, gu_norm, score_candidates
+from src.rerank.combine import MixScorer, final_scores, gu_norm, score_candidates
 
 CHAIN_LENGTH = 10
 
@@ -37,11 +37,6 @@ def generate_chains(
         for session, (ids, taste) in zip(sessions, candidates_for_sessions(model, sessions, n_candidates)):
             session.append(score_candidates(ids, taste, session[-1], mix, alpha).best())
     return [[session[len(seed) - 1], *session[len(seed):]] for session, seed in zip(sessions, seeds)]
-
-
-def all_of(mixes: Sequence[MixScorer]) -> MultiMixScorer:
-    """Gộp nhiều hàm điểm mix thành một MultiMixScorer (mỗi hàm một cấu hình)."""
-    return lambda current, candidate_ids: [np.asarray(mix(current, candidate_ids), dtype=float) for mix in mixes]
 
 
 def generate_chains_many(
@@ -73,7 +68,7 @@ def generate_chains_many(
             if len(scores) != n_mixes:
                 raise ValueError(f"hàm điểm mix phải trả về {n_mixes} mảng điểm, đang trả về {len(scores)}")
             norm = gu_norm(taste)
-            best[u] = [ids[int(np.argmax(alpha * norm + (1 - alpha) * np.asarray(s, dtype=float)))] for s in scores]
+            best[u] = [ids[int(np.argmax(final_scores(norm, np.asarray(s, dtype=float), alpha)))] for s in scores]
         for m, per_mix in enumerate(sessions):
             for session in per_mix:
                 session.append(best[unique[tuple(session)]][m])

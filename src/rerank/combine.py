@@ -24,6 +24,11 @@ def gu_norm(taste_scores: Sequence[float] | np.ndarray) -> np.ndarray:
     return np.ones_like(x) if span == 0 else (x - x.min()) / span
 
 
+def final_scores(gu_norm: np.ndarray, mix: np.ndarray, alpha: float) -> np.ndarray:
+    """Điểm cuối = α · gu_norm + (1 − α) · điểm mix (GLOSSARY); mảng cùng shape, vd. (ứng viên) hoặc (phiên × ứng viên)."""
+    return alpha * gu_norm + (1 - alpha) * mix
+
+
 def _check_inputs(ids: list[str], taste: np.ndarray, alpha: float) -> None:
     if not 0.0 <= alpha <= 1.0:
         raise ValueError(f"α phải trong khoảng 0–1, đang là {alpha}")
@@ -70,7 +75,7 @@ def score_candidates(
     if not np.isfinite(mix_scores).all():
         raise ValueError(f"điểm mix phải hữu hạn, có {int((~np.isfinite(mix_scores)).sum())} giá trị NaN/inf")
     norm = gu_norm(taste)
-    return ScoredCandidates(ids, taste, norm, mix_scores, alpha * norm + (1 - alpha) * mix_scores)
+    return ScoredCandidates(ids, taste, norm, mix_scores, final_scores(norm, mix_scores, alpha))
 
 
 def rerank(

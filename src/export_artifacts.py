@@ -223,7 +223,7 @@ def load_artifacts(path: str | Path) -> Artifacts:
 # --- CLI: tìm file đầu vào, chọn mô hình, ghi và kiểm tra dung lượng ---
 
 
-def _find_optional(root: Path, name: str) -> Path | None:
+def find_optional_file(root: Path, name: str) -> Path | None:
     """File duy nhất tên name dưới root (None nếu không có); trùng tên thì báo lỗi để khỏi đọc nhầm bộ dữ liệu."""
     found = sorted(root.rglob(name))
     if len(found) > 1:
@@ -231,8 +231,8 @@ def _find_optional(root: Path, name: str) -> Path | None:
     return found[0] if found else None
 
 
-def _find(root: Path, name: str) -> Path:
-    path = _find_optional(root, name)
+def find_file(root: Path, name: str) -> Path:
+    path = find_optional_file(root, name)
     if path is None:
         raise ValueError(f"không tìm thấy {name} dưới {root}")
     return path
@@ -257,16 +257,16 @@ def choose_model(params_files: dict[str, Path]) -> tuple[str, dict[str, Any], di
 def export(input_dir: str | Path, out_dir: str | Path, n_demo: int = N_DEMO, random_seed: int = RANDOM_SEED,
            max_bytes: int = MAX_BYTES) -> Artifacts:
     root = Path(input_dir)
-    params_files = {m: p for m in MODELS if (p := _find_optional(root, f"{m}_params.json")) is not None}
+    params_files = {m: p for m in MODELS if (p := find_optional_file(root, f"{m}_params.json")) is not None}
     model, params, ndcg = choose_model(params_files)
-    tracks = pd.read_parquet(_find(root, "tracks.parquet"))
-    eval_targets = pd.read_parquet(_find(root, "eval_targets.parquet"))
-    vectors = np.load(_find(root, f"{model}.npy"))
-    index = pd.read_parquet(_find(root, f"{model}_tracks.parquet"))
+    tracks = pd.read_parquet(find_file(root, "tracks.parquet"))
+    eval_targets = pd.read_parquet(find_file(root, "eval_targets.parquet"))
+    vectors = np.load(find_file(root, f"{model}.npy"))
+    index = pd.read_parquet(find_file(root, f"{model}_tracks.parquet"))
     validate_tracks(tracks)
     validate_eval_targets(eval_targets)
     validate_item_embeddings(vectors, index)
-    mix_params_path, learned_path = _find_optional(root, MIX_PARAMS), _find_optional(root, MIX_LEARNED)
+    mix_params_path, learned_path = find_optional_file(root, MIX_PARAMS), find_optional_file(root, MIX_LEARNED)
 
     artifacts = build_artifacts(
         tracks, vectors, index.sort_values("row")["track_id"], model, float(params["decay"]),
