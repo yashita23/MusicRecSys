@@ -32,15 +32,17 @@ python -m src.data.fake --out data/fake   # dữ liệu giả theo data-contract
 
 ## Chạy app
 
-App Streamlit chạy trên laptop, không cần mạng, cần Python 3.11+ và không cần torch. Bản hiện tại là prototype trên dữ liệu giả (#11); bản đọc `artifacts/` ở #21.
+App Streamlit (Demo v1, #21) chạy trên laptop, không cần mạng, cần Python 3.11+ và không cần torch. App đọc `artifacts/` (#20): chọn một playlist test, xem bài đang phát và hàng đợi top-10 (điểm gu, điểm mix, một dòng giải thích), kéo α, **tự chọn bài tiếp theo** trong hàng đợi (app không tự phát), quay lại hoặc bắt đầu lại.
 
 ```bash
 pip install -r app/requirements.txt
-python -m src.data.fake --out data/fake   # một lần, ở thư mục gốc repo
+# một lần, ở thư mục gốc repo: tạo artifacts/
+python -m src.export_artifacts --input <thư mục đã tải từ Kaggle> --out artifacts   # bản thật (#20)
+python -m src.export_artifacts --fake --out artifacts                            # hoặc dữ liệu giả để thử
 streamlit run app/main.py                 # ở thư mục gốc repo, rồi mở http://localhost:8501
 ```
 
-Mọi đường dẫn dữ liệu app đọc nằm trong `app/config.toml` (đường dẫn tương đối tính theo thư mục `app/`). Muốn dùng file config khác thì đặt biến môi trường `MIXNEXT_CONFIG`. Chạy từ thư mục gốc repo để Streamlit đọc `.streamlit/config.toml` (tắt thống kê sử dụng, không hỏi email): app không cần mạng.
+Đường dẫn `artifacts/` nằm trong `app/config.toml` (tương đối theo thư mục `app/`). Muốn dùng file config khác thì đặt biến môi trường `MIXNEXT_CONFIG`. Chạy từ thư mục gốc repo để Streamlit đọc `.streamlit/config.toml` (tắt thống kê sử dụng, không hỏi email): app không cần mạng.
 
 ## Chạy lại pipeline trên Kaggle
 

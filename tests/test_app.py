@@ -1,5 +1,8 @@
+"""App MixNext (Demo v1, #21): logic phiên trong app/player.py, config, và giao diện qua AppTest."""
+import time
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -7,145 +10,242 @@ pytest.importorskip("tomllib", reason="app cần Python 3.11+ (đọc config b�
 
 from app.config import load_config  # noqa: E402
 from app.player import Player  # noqa: E402
-from src.data.fake import make_fake_dataset, write_fake  # noqa: E402
-from src.data.schema import SchemaError  # noqa: E402
+from src.data.fake import make_fake_dataset  # noqa: E402
+from src.export_artifacts import build_artifacts, demo_playlists, write_artifacts  # noqa: E402
+from src.rerank.explain import explain  # noqa: E402
+
+DECAY = 0.7
+
+
+@pytest.fixture(scope="module")
+def artifacts():
+    fake = make_fake_dataset(n_sessions=200, n_tracks=400, random_seed=7)
+    vectors, index = fake.embeddings["fake"]
+    demo = demo_playlists(fake.eval_targets, n=10)
+    return build_artifacts(fake.tracks, vectors, index["track_id"], model="fake", decay=DECAY, demo=demo)
+
+
+@pytest.fixture
+def player(artifacts):
+    return Player(artifacts)
+
+
+def first_playlist(player):
+    return player.start(player.playlists[0])
+
+
+def test_a_session_starts_from_the_seed_with_the_last_seed_track_playing(player, artifacts):
+    session = first_playlist(player)
+    seed = artifacts.demo.set_index("session_id").loc[player.playlists[0], "seed_track_ids"]
+    assert list(session.tracks) == list(seed) and session.chosen == ()
+    assert player.now_playing(session)["track_id"] == seed[-1]
+    history = player.history(session)
+    assert history["track_id"].tolist() == list(seed) and (history["source"] == "seed").all()
+
+
+def test_the_queue_has_ten_tracks_outside_the_session_with_scores_and_explanations(player):
+    session = first_playlist(player)
+    queue = player.queue(session, alpha=0.7)
+    assert len(queue) == 10 and not set(queue["track_id"]) & set(session.tracks)
+    assert (np.diff(queue["final"]) <= 0).all()
+    playing = player.now_playing(session)
+    assert queue["explanation"].tolist() == [explain(playing, row) for _, row in queue.iterrows()]
+
+
+def test_choosing_a_queued_track_appends_it_plays_it_and_recomputes_the_queue(player):
+    start = first_playlist(player)
+    before = player.queue(start, alpha=0.7)
+    pick = before["track_id"].iloc[3]
+    after = player.choose(start, pick, alpha=0.7)
+
+    assert after.tracks == start.tracks + (pick,) and after.chosen == (pick,)
+    assert player.now_playing(after)["track_id"] == pick
+    history = player.history(after)
+    assert history["track_id"].iloc[-1] == pick and history["source"].iloc[-1] == "chọn"
+    assert history["explanation"].iloc[-1] == explain(player.now_playing(start), player.now_playing(after))
+    queue = player.queue(after, alpha=0.7)
+    assert not set(queue["track_id"]) & set(after.tracks)  # seed và bài đã chọn không quay lại
+    assert queue["track_id"].tolist() != before["track_id"].tolist()
+
+
+def test_only_a_track_from_the_current_queue_can_be_chosen(player):
+    session = first_playlist(player)
+    outside = sorted(set(player.tracks_with_vectors) - set(player.queue(session, alpha=0.7)["track_id"]) - set(session.tracks))[0]
+    with pytest.raises(ValueError, match="hàng đợi"):
+        player.choose(session, outside, alpha=0.7)
+
+
+def test_back_undoes_the_last_choice_and_restart_returns_to_the_seed(player):
+    start = first_playlist(player)
+    one = player.choose(start, player.queue(start, 0.7)["track_id"].iloc[0], 0.7)
+    two = player.choose(one, player.queue(one, 0.7)["track_id"].iloc[0], 0.7)
+    assert player.back(two) == one and player.back(one) == start
+    assert player.back(start) == start  # đang ở seed: không lùi được nữa
+    assert player.restart(two) == start
+
+
+def test_alpha_only_reorders_the_same_candidates(player):
+    session = first_playlist(player)
+    by_taste, by_mix = player.queue(session, alpha=1.0, k=None), player.queue(session, alpha=0.0, k=None)
+    assert set(by_taste["track_id"]) == set(by_mix["track_id"]) and len(by_taste) == 100
+    assert by_taste["track_id"].tolist() != by_mix["track_id"].tolist()
+
+
+def test_choosing_and_moving_alpha_take_under_a_second_on_a_full_size_catalog(artifacts):
+    # Danh mục cỡ artifacts thật: khoảng 130 nghìn bài, vector 256 chiều
+    rng = np.random.default_rng(0)
+    n, dim = 130_000, 256
+    ids = [f"{i:022d}" for i in range(n)]
+    big_tracks = pd.DataFrame({
+        "track_id": ids, "track_name": "x", "artist_name": "y", "tempo": 120.0, "bpm": rng.uniform(70, 180, n),
+        "key": 0, "mode": 1, "camelot": rng.choice(["8A", "9A", "3B"], n), "energy": rng.uniform(0, 1, n), "n_occurrences": 1,
+    })
+    demo = pd.DataFrame({"session_id": [1], "seed_track_ids": [ids[:5]], "target_track_id": [ids[5]]})
+    big = build_artifacts(big_tracks, rng.normal(size=(n, dim)).astype(np.float32), ids, "big", DECAY, demo)
+    player = Player(big)
+    session = player.start(1)
+    player.queue(session, 0.7)  # lần đầu: tính ứng viên
+    t = time.perf_counter()
+    player.queue(session, 0.3)
+    assert time.perf_counter() - t < 1.0  # kéo α
+    t = time.perf_counter()
+    after = player.choose(session, player.queue(session, 0.3)["track_id"].iloc[0], 0.3)
+    player.queue(after, 0.3)
+    player.history(after)
+    assert time.perf_counter() - t < 1.0  # chọn bài: phiên, lịch sử, hàng đợi mới
 
 
 def tid(name: str) -> str:
     return name.ljust(22, "x")
 
 
-SEED = [tid(f"S{i}") for i in range(5)]  # bài cuối S4 đang phát: 8A, 124 BPM, năng lượng 0,7
-P, Q, R = tid("P"), tid("Q"), tid("R")
+def test_a_hand_built_catalog_gives_the_expected_queue_and_explanation():
+    # Seed S0..S4 cùng vector (1, 0); decay 0,7 → vector phiên 2,7731·(1, 0). Điểm gu = tích vô hướng:
+    # P (1, 0) → 2,77; Q (0,5; 0) → 1,39; R (0, 1) → 0; 100 bài lấp chỗ (0, −1) → −2,77.
+    # Bài đang phát S4: 8A, 124 BPM, năng lượng 0,7. Điểm mix theo luật (0,4·BPM + 0,4·tông + 0,2·năng lượng):
+    # P (3B, 90, 0,1) → 0,08; Q (8A, 126, 0,68) → 0,996; R (9A, 124, 0,7) → 0,92; bài lấp như P → 0,08.
+    seed = [tid(f"S{i}") for i in range(5)]
+    P, Q, R = tid("P"), tid("Q"), tid("R")
+    fillers = [tid(f"F{i:03d}") for i in range(100)]
+    rows = [(t, "1A", 100.0, 0.5) for t in seed[:-1]] + [(seed[-1], "8A", 124.0, 0.7), (P, "3B", 90.0, 0.1), (Q, "8A", 126.0, 0.68), (R, "9A", 124.0, 0.7)]
+    rows += [(t, "3B", 90.0, 0.1) for t in fillers]
+    tracks = pd.DataFrame({
+        "track_id": [r[0] for r in rows], "track_name": [r[0][:3] for r in rows], "artist_name": "x", "tempo": [r[2] for r in rows],
+        "bpm": [r[2] for r in rows], "key": 0, "mode": 1, "camelot": [r[1] for r in rows], "energy": [r[3] for r in rows], "n_occurrences": 1,
+    })
+    ids = seed + [P, Q, R] + fillers
+    vectors = np.array([[1, 0]] * 5 + [[1, 0], [0.5, 0], [0, 1]] + [[0, -1]] * 100, dtype=np.float32)
+    demo = pd.DataFrame({"session_id": [1], "seed_track_ids": [seed], "target_track_id": [Q]})
+    player = Player(build_artifacts(tracks, vectors, ids, "hand", DECAY, demo))
+    session = player.start(1)
+
+    assert player.queue(session, alpha=1.0)["track_id"].tolist()[:3] == [P, Q, R]
+    by_mix = player.queue(session, alpha=0.0)
+    assert by_mix["track_id"].tolist()[:2] == [Q, R]
+    assert by_mix["mix"].tolist()[:2] == pytest.approx([0.996, 0.92])
+    assert by_mix["explanation"].iloc[0] == "cùng tông 8A · BPM 124→126 · năng lượng 0,70→0,68"
 
 
-def track(track_id: str, camelot: str, bpm: float, energy: float) -> dict:
-    return {"track_id": track_id, "track_name": f"Bài {track_id[:2]}", "artist_name": "Nghệ sĩ", "bpm": bpm, "camelot": camelot, "energy": energy}
+def test_a_session_from_other_artifacts_is_not_valid_and_restarts(player, artifacts):
+    session = first_playlist(player)
+    assert player.is_valid(session)
+    stranger = type(session)(session.playlist_id, ("z" * 22,) * 5, 5)
+    assert not player.is_valid(stranger)
+    assert not player.is_valid(type(session)(-1, session.tracks, session.n_seed))
 
 
-TRACKS = pd.DataFrame(
-    [track(t, "1A", 100, 0.5) for t in SEED[:-1]]
-    + [
-        track(SEED[-1], "8A", 124, 0.7),
-        # Điểm mix so với S4 (0,4·s_bpm + 0,4·s_key + 0,2·s_energy):
-        track(P, "3B", 90, 0.1),   # BPM lệch 27% → 0, tông không mix được → 0, năng lượng 0,4 → 0,08
-        track(Q, "8A", 126, 0.68),  # lệch 1,6% → 1, cùng tông → 1, năng lượng 0,98 → 0,996
-        track(R, "9A", 124, 0.7),   # cùng BPM → 1, tông kề → 0,8, năng lượng 1 → 0,92
-    ]
-)
-EVAL_TARGETS = pd.DataFrame({"session_id": [7], "split": ["test"], "seed_track_ids": [SEED], "target_track_id": [Q]})
-CANDIDATES = pd.DataFrame({"session_id": 7, "rank": [1, 2, 3], "track_id": [P, Q, R], "taste_score": [0.9, 0.5, 0.1]})
-
-
-@pytest.fixture
-def player():
-    return Player(TRACKS, EVAL_TARGETS, CANDIDATES)
-
-
-def test_now_playing_is_the_last_seed_track(player):
-    assert player.playlists == [7]
-    assert player.split == "test"
-    assert player.now_playing(7)["track_id"] == SEED[-1]
-
-
-def test_queue_follows_taste_at_alpha_1_and_mix_at_alpha_0(player):
-    assert player.queue(7, alpha=1.0)["track_id"].tolist() == [P, Q, R]
-    at_mix = player.queue(7, alpha=0.0)
-    assert at_mix["track_id"].tolist() == [Q, R, P]
-    assert at_mix["mix"].tolist() == pytest.approx([0.996, 0.92, 0.08])
-
-
-def test_queue_rows_carry_what_the_player_shows(player):
-    row = player.queue(7, alpha=0.5).iloc[0]
-    for column in ("rank", "track_name", "artist_name", "bpm", "camelot", "energy", "gu_norm", "mix", "final"):
-        assert column in row.index
-
-
-def test_candidates_of_a_session_missing_from_eval_targets_are_rejected():
-    with pytest.raises(SchemaError, match="eval_targets"):
-        Player(TRACKS, EVAL_TARGETS, CANDIDATES.assign(session_id=8))
-
-
-def test_candidates_or_seeds_with_unknown_tracks_are_rejected():
-    with pytest.raises(SchemaError, match="tracks"):
-        Player(TRACKS[TRACKS["track_id"] != R], EVAL_TARGETS, CANDIDATES)
-
-
-def data_config(tracks: str, eval_targets: str, candidates: str) -> str:
-    return f"[data]\ntracks = '{tracks}'\neval_targets = '{eval_targets}'\ncandidates = '{candidates}'\n"
-
-
-FAKE_PATHS = ("../data/fake/tracks.parquet", "../data/fake/eval_targets.parquet", "../data/fake/candidates/fake_test_run0.parquet")
-
-
-def write_config(path: Path, body: str) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(body, encoding="utf-8")
-    return path
-
-
-def test_relative_data_paths_resolve_against_the_config_folder_not_the_working_directory(tmp_path, monkeypatch):
-    absolute = (tmp_path / "elsewhere" / "fake_test_run0.parquet").resolve()
-    cfg_path = write_config(tmp_path / "app" / "config.toml", data_config(*FAKE_PATHS[:2], absolute.as_posix()))
-    monkeypatch.chdir(tmp_path / "app")
+def test_the_config_points_at_one_artifacts_folder_relative_to_the_config_file(tmp_path, monkeypatch):
+    cfg_path = tmp_path / "app" / "config.toml"
+    cfg_path.parent.mkdir()
+    cfg_path.write_text("[data]\nartifacts = '../artifacts'\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
     cfg = load_config(cfg_path)
-    assert cfg.tracks == (tmp_path / "data" / "fake" / "tracks.parquet").resolve()
-    assert cfg.eval_targets == (tmp_path / "data" / "fake" / "eval_targets.parquet").resolve()
-    assert cfg.candidates == absolute
+    assert cfg.artifacts == (tmp_path / "artifacts").resolve()
+    assert {p.name for p in cfg.missing_files()} >= {"manifest.json", "tracks.parquet"}
 
 
 def test_a_missing_data_path_names_the_key_and_the_config_file(tmp_path):
-    cfg_path = write_config(tmp_path / "config.toml", '[data]\ntracks = "t.parquet"\neval_targets = "e.parquet"\n')
-    with pytest.raises(ValueError, match="candidates") as err:
+    cfg_path = tmp_path / "config.toml"
+    cfg_path.write_text("[data]\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="artifacts") as err:
         load_config(cfg_path)
     assert "config.toml" in str(err.value)
+
+
+def test_player_reads_an_artifacts_folder(artifacts, tmp_path):
+    write_artifacts(artifacts, tmp_path)
+    player = Player.from_dir(tmp_path)
+    assert player.playlists == sorted(artifacts.demo["session_id"].tolist())
+    assert player.default_alpha == artifacts.mix_params.rule_alpha
 
 
 APP = Path(__file__).resolve().parents[1] / "app" / "main.py"
 
 
 @pytest.fixture
-def fake_config(tmp_path, monkeypatch):
-    """Dữ liệu giả ghi ra thư mục tạm, cùng một config trỏ tới nó; app đọc config qua MIXNEXT_CONFIG."""
-    write_fake(make_fake_dataset(n_sessions=120, n_tracks=400, random_seed=3), tmp_path / "data" / "fake")
-    cfg_path = write_config(tmp_path / "app" / "config.toml", data_config(*FAKE_PATHS))
+def app_config(artifacts, tmp_path, monkeypatch):
+    """artifacts/ giả ghi ra thư mục tạm, kèm config trỏ tới; app đọc config qua MIXNEXT_CONFIG."""
+    write_artifacts(artifacts, tmp_path / "artifacts")
+    cfg_path = tmp_path / "app" / "config.toml"
+    cfg_path.parent.mkdir()
+    cfg_path.write_text("[data]\nartifacts = '../artifacts'\n", encoding="utf-8")
     monkeypatch.setenv("MIXNEXT_CONFIG", str(cfg_path))
-    return cfg_path
+    return tmp_path
 
 
-def test_app_shows_a_ten_track_queue_that_changes_when_alpha_moves(fake_config):
+def run_app():
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
-    at = streamlit_testing.AppTest.from_file(str(APP), default_timeout=30).run()
-    assert not at.exception
-    first = at.dataframe[0].value
+    at = streamlit_testing.AppTest.from_file(str(APP), default_timeout=60).run()
+    assert not at.exception, at.exception
+    return at
+
+
+def queue_ids(at) -> list[str]:
+    return [b.key.removeprefix("choose_") for b in at.button if b.key and b.key.startswith("choose_")]
+
+
+def test_choosing_from_the_queue_updates_now_playing_history_and_queue(app_config):
+    at = run_app()
+    first = queue_ids(at)
     assert len(first) == 10
-
-    at.slider[0].set_value(0.0).run()
+    at.button(key=f"choose_{first[2]}").click().run()
     assert not at.exception
-    assert at.dataframe[0].value["Bài"].tolist() != first["Bài"].tolist()
+    assert at.session_state["session"].current == first[2]
+    assert first[2] not in queue_ids(at) and len(queue_ids(at)) == 10
+    assert any(first[2] in str(df.value["track_id"].tolist()) for df in at.dataframe)  # bảng lịch sử có bài vừa chọn
+
+    at.button(key="back").click().run()
+    assert at.session_state["session"].chosen == ()
+    at.button(key=f"choose_{first[0]}").click().run()
+    at.button(key="restart").click().run()
+    assert at.session_state["session"].chosen == () and queue_ids(at) == first
 
 
-def test_app_without_data_explains_how_to_create_it(fake_config, tmp_path):
-    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
-    (tmp_path / "data" / "fake" / "tracks.parquet").unlink()
-    at = streamlit_testing.AppTest.from_file(str(APP), default_timeout=30).run()
-    assert not at.exception
-    assert "python -m src.data.fake" in at.error[0].value
+def test_moving_alpha_reorders_the_queue(app_config):
+    at = run_app()
+    before = queue_ids(at)
+    at.slider(key="alpha").set_value(0.0).run()
+    assert not at.exception and queue_ids(at) != before
 
 
-def test_app_picks_up_regenerated_data_without_a_restart(fake_config, tmp_path):
-    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
-    at = streamlit_testing.AppTest.from_file(str(APP), default_timeout=30).run()
-    before = at.selectbox[0].options
-    write_fake(make_fake_dataset(n_sessions=200, n_tracks=400, random_seed=4), tmp_path / "data" / "fake")
+def test_missing_artifacts_explain_how_to_build_them(app_config):
+    (app_config / "artifacts" / "manifest.json").unlink()
+    at = run_app()
+    assert "python -m src.export_artifacts" in at.error[0].value
+
+
+def test_a_broken_config_shows_an_error_instead_of_a_traceback(tmp_path, monkeypatch):
+    monkeypatch.setenv("MIXNEXT_CONFIG", str(tmp_path / "missing.toml"))
+    at = run_app()
+    assert "missing.toml" in at.error[0].value
+
+
+def test_the_app_picks_up_regenerated_artifacts_without_a_restart(app_config):
+    from src.export_artifacts import fake_artifacts
+
+    at = run_app()
+    at.button(key=f"choose_{queue_ids(at)[0]}").click().run()
+    fake_artifacts(app_config / "artifacts", n_demo=5, random_seed=99)  # danh mục khác hẳn, phiên cũ không còn hợp lệ
     at.run()
     assert not at.exception
-    assert at.selectbox[0].options != before
-
-
-def test_app_with_a_broken_config_shows_an_error_instead_of_a_traceback(tmp_path, monkeypatch):
-    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
-    monkeypatch.setenv("MIXNEXT_CONFIG", str(tmp_path / "missing.toml"))
-    at = streamlit_testing.AppTest.from_file(str(APP), default_timeout=30).run()
-    assert not at.exception
-    assert "missing.toml" in at.error[0].value
+    assert at.session_state["session"].chosen == () and len(queue_ids(at)) == 10

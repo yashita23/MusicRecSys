@@ -80,3 +80,12 @@ def test_app_loads_artifacts_without_torch(fake, tmp_path):
     )
     result = subprocess.run([sys.executable, "-c", script], cwd=REPO, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_fake_artifacts_can_be_built_from_the_cli_for_trying_the_app(tmp_path):
+    from src.export_artifacts import main
+
+    main(["--fake", "--out", str(tmp_path / "artifacts"), "--n-demo", "7"])
+    loaded = load_artifacts(tmp_path / "artifacts")
+    assert loaded.model == "fake" and len(loaded.demo) == 7
+    assert loaded.taste_model().candidates(list(loaded.demo["seed_track_ids"].iloc[0]), k=10)[0]
