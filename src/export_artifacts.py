@@ -44,6 +44,7 @@ N_DEMO = 100
 RANDOM_SEED = 42
 TEST = "test"
 DEFAULT_ALPHA = 0.7            # α được chọn ở #19 (reports/sweep_v1.csv) cho mix theo luật với trọng số mặc định
+FAKE_DECAY = 0.7               # decay của vector phiên cho artifacts giả (--fake); không liên quan α
 
 TRACKS, VECTORS, INDEX, DEMO = "tracks.parquet", "item_embeddings.npy", "track_index.parquet", "demo_playlists.parquet"
 MIX_PARAMS, MIX_LEARNED, MANIFEST = "mix_params.json", "mix_learned.npz", "manifest.json"
@@ -289,7 +290,7 @@ def fake_artifacts(out_dir: str | Path, n_demo: int = 20, random_seed: int = RAN
     fake = make_fake_dataset(n_sessions=300, n_tracks=500, random_seed=random_seed)
     vectors, index = fake.embeddings[FAKE_MODEL]
     artifacts = build_artifacts(
-        fake.tracks, vectors, index["track_id"], FAKE_MODEL, 0.7, demo_playlists(fake.eval_targets, n_demo, random_seed),
+        fake.tracks, vectors, index["track_id"], FAKE_MODEL, FAKE_DECAY, demo_playlists(fake.eval_targets, n_demo, random_seed),
         info={"params": {}, "val_ndcg": {}, "random_seed": random_seed, "fake": True},
     )
     write_artifacts(artifacts, out_dir)
@@ -307,7 +308,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.fake == (args.input is not None):
         ap.error("cần đúng một trong hai: --input <thư mục> hoặc --fake")
     try:
-        artifacts = fake_artifacts(args.out, random_seed=args.random_seed) if args.fake else export(args.input, args.out, args.n_demo, args.random_seed)
+        artifacts = fake_artifacts(args.out, args.n_demo, args.random_seed) if args.fake else export(args.input, args.out, args.n_demo, args.random_seed)
     except ValueError as e:
         ap.error(str(e))
     manifest = json.loads((Path(args.out) / MANIFEST).read_text(encoding="utf-8"))

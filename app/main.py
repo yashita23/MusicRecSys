@@ -25,7 +25,15 @@ BUILD_COMMANDS = (
     "python -m src.export_artifacts --input <thư mục Kaggle đã tải> --out artifacts   # bản thật (#20)\n"
     "python -m src.export_artifacts --fake --out artifacts                          # dữ liệu giả để thử"
 )
-QUEUE_COLUMNS = (0.4, 3.2, 0.8, 0.8, 0.9, 0.8, 0.8, 0.8, 4.0, 0.8)  # #, bài, BPM, Camelot, năng lượng, gu, mix, cuối, giải thích, nút
+# (nhãn, độ rộng) của các cột hàng đợi
+QUEUE_COLUMNS = (("#", 0.4), ("Bài", 3.2), ("BPM", 0.8), ("Camelot", 0.8), ("Năng lượng", 0.9), ("Điểm gu", 0.8),
+                 ("Điểm mix", 0.8), ("Điểm cuối", 0.8), ("Giải thích", 4.0), ("", 0.8))
+WIDTHS = [width for _, width in QUEUE_COLUMNS]
+
+
+def decimal(x: float) -> str:
+    """Số 2 chữ số thập phân với dấu phẩy, như dòng giải thích."""
+    return f"{x:.2f}".replace(".", ",")
 
 
 @st.cache_resource(max_entries=1)
@@ -65,7 +73,8 @@ with st.sidebar:
     alpha = st.slider("α", 0.0, 1.0, float(player.default_alpha), 0.05, key="alpha",
                       help="α = 1: chỉ theo điểm gu. α = 0: chỉ theo điểm mix.")
     st.caption("← mix mượt · đúng gu →")
-    if st.session_state.get("session") is None or st.session_state["session"].playlist_id != playlist:
+    current = st.session_state.get("session")
+    if current is None or current.playlist_id != playlist or not player.is_valid(current):  # đổi playlist hoặc đổi artifacts
         st.session_state["session"] = player.start(playlist)
     back, restart = st.columns(2)
     if back.button("Quay lại", key="back", use_container_width=True):
@@ -88,23 +97,22 @@ st.markdown(f"**{playing['track_name']}** · {playing['artist_name']}")
 bpm, camelot, energy, step = st.columns(4)
 bpm.metric("BPM", f"{playing['bpm']:.0f}")
 camelot.metric("Camelot", playing["camelot"])
-energy.metric("Năng lượng", f"{playing['energy']:.2f}")
+energy.metric("Năng lượng", decimal(playing["energy"]))
 step.metric("Bài đã chọn", len(session.chosen))
 
 st.subheader("Hàng đợi gợi ý")
-header = st.columns(QUEUE_COLUMNS)
-for col, label in zip(header, ["#", "Bài", "BPM", "Camelot", "Năng lượng", "Điểm gu", "Điểm mix", "Điểm cuối", "Giải thích", ""]):
+for col, (label, _) in zip(st.columns(WIDTHS), QUEUE_COLUMNS):
     col.markdown(f"**{label}**")
 for row in queue.itertuples():
-    cols = st.columns(QUEUE_COLUMNS)
+    cols = st.columns(WIDTHS)
     cols[0].write(row.rank)
     cols[1].write(f"{row.track_name} · {row.artist_name}")
     cols[2].write(f"{row.bpm:.0f}")
     cols[3].write(row.camelot)
-    cols[4].write(f"{row.energy:.2f}")
-    cols[5].write(f"{row.gu_norm:.2f}")
-    cols[6].write(f"{row.mix:.2f}")
-    cols[7].write(f"{row.final:.2f}")
+    cols[4].write(decimal(row.energy))
+    cols[5].write(decimal(row.gu_norm))
+    cols[6].write(decimal(row.mix))
+    cols[7].write(decimal(row.final))
     cols[8].write(row.explanation)
     cols[9].button("Chọn", key=f"choose_{row.track_id}")
 

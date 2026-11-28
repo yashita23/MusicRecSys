@@ -115,6 +115,45 @@ def test_choosing_and_moving_alpha_take_under_a_second_on_a_full_size_catalog(ar
     assert time.perf_counter() - t < 1.0  # chọn bài: phiên, lịch sử, hàng đợi mới
 
 
+def tid(name: str) -> str:
+    return name.ljust(22, "x")
+
+
+def test_a_hand_built_catalog_gives_the_expected_queue_and_explanation():
+    # Seed S0..S4 cùng vector (1, 0); decay 0,7 → vector phiên 2,7731·(1, 0). Điểm gu = tích vô hướng:
+    # P (1, 0) → 2,77; Q (0,5; 0) → 1,39; R (0, 1) → 0; 100 bài lấp chỗ (0, −1) → −2,77.
+    # Bài đang phát S4: 8A, 124 BPM, năng lượng 0,7. Điểm mix theo luật (0,4·BPM + 0,4·tông + 0,2·năng lượng):
+    # P (3B, 90, 0,1) → 0,08; Q (8A, 126, 0,68) → 0,996; R (9A, 124, 0,7) → 0,92; bài lấp như P → 0,08.
+    seed = [tid(f"S{i}") for i in range(5)]
+    P, Q, R = tid("P"), tid("Q"), tid("R")
+    fillers = [tid(f"F{i:03d}") for i in range(100)]
+    rows = [(t, "1A", 100.0, 0.5) for t in seed[:-1]] + [(seed[-1], "8A", 124.0, 0.7), (P, "3B", 90.0, 0.1), (Q, "8A", 126.0, 0.68), (R, "9A", 124.0, 0.7)]
+    rows += [(t, "3B", 90.0, 0.1) for t in fillers]
+    tracks = pd.DataFrame({
+        "track_id": [r[0] for r in rows], "track_name": [r[0][:3] for r in rows], "artist_name": "x", "tempo": [r[2] for r in rows],
+        "bpm": [r[2] for r in rows], "key": 0, "mode": 1, "camelot": [r[1] for r in rows], "energy": [r[3] for r in rows], "n_occurrences": 1,
+    })
+    ids = seed + [P, Q, R] + fillers
+    vectors = np.array([[1, 0]] * 5 + [[1, 0], [0.5, 0], [0, 1]] + [[0, -1]] * 100, dtype=np.float32)
+    demo = pd.DataFrame({"session_id": [1], "seed_track_ids": [seed], "target_track_id": [Q]})
+    player = Player(build_artifacts(tracks, vectors, ids, "hand", DECAY, demo))
+    session = player.start(1)
+
+    assert player.queue(session, alpha=1.0)["track_id"].tolist()[:3] == [P, Q, R]
+    by_mix = player.queue(session, alpha=0.0)
+    assert by_mix["track_id"].tolist()[:2] == [Q, R]
+    assert by_mix["mix"].tolist()[:2] == pytest.approx([0.996, 0.92])
+    assert by_mix["explanation"].iloc[0] == "cùng tông 8A · BPM 124→126 · năng lượng 0,70→0,68"
+
+
+def test_a_session_from_other_artifacts_is_not_valid_and_restarts(player, artifacts):
+    session = first_playlist(player)
+    assert player.is_valid(session)
+    stranger = type(session)(session.playlist_id, ("z" * 22,) * 5, 5)
+    assert not player.is_valid(stranger)
+    assert not player.is_valid(type(session)(-1, session.tracks, session.n_seed))
+
+
 def test_the_config_points_at_one_artifacts_folder_relative_to_the_config_file(tmp_path, monkeypatch):
     cfg_path = tmp_path / "app" / "config.toml"
     cfg_path.parent.mkdir()
@@ -199,3 +238,14 @@ def test_a_broken_config_shows_an_error_instead_of_a_traceback(tmp_path, monkeyp
     monkeypatch.setenv("MIXNEXT_CONFIG", str(tmp_path / "missing.toml"))
     at = run_app()
     assert "missing.toml" in at.error[0].value
+
+
+def test_the_app_picks_up_regenerated_artifacts_without_a_restart(app_config):
+    from src.export_artifacts import fake_artifacts
+
+    at = run_app()
+    at.button(key=f"choose_{queue_ids(at)[0]}").click().run()
+    fake_artifacts(app_config / "artifacts", n_demo=5, random_seed=99)  # danh mục khác hẳn, phiên cũ không còn hợp lệ
+    at.run()
+    assert not at.exception
+    assert at.session_state["session"].chosen == () and len(queue_ids(at)) == 10

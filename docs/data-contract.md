@@ -181,7 +181,8 @@ Mọi file app đọc (#20), do `python -m src.export_artifacts` ghi ra; app đ�
 
   `learned.alpha` là α của điểm mix học (#25 chọn; `null` thì app dùng `rule.alpha`). Mọi α trong 0–1.
 - `mix_learned.npz`: chép từ `mixnext-mix-learned` nếu có, xem mục `mix_learned.npz`. Không có thì file cũ trong thư mục ra bị xóa.
-- `manifest.json`: báo cáo, không phải cấu hình. `model`, `decay`, `mix_learned` (có `mix_learned.npz` hay không), `n_tracks`, `n_tracks_in_index`, `dim`, `n_demo`, `params` (tham số đã chọn của mô hình), `val_ndcg` (NDCG@10 val tốt nhất theo mô hình), `random_seed`, `n_tracks_with_vector`, `n_dropped` (số bài có vector bị cắt), `bytes` (tổng dung lượng các file dữ liệu).
+- `manifest.json`: báo cáo, không phải cấu hình. `model`, `decay`, `mix_learned` (có `mix_learned.npz` hay không), `n_tracks`, `n_tracks_in_index`, `dim`, `n_demo`, `params` (tham số đã chọn của mô hình), `val_ndcg` (NDCG@10 val tốt nhất theo mô hình), `random_seed`, `n_tracks_with_vector`, `n_dropped` (số bài có vector bị cắt), `bytes` (tổng dung lượng các file dữ liệu); `fake: true` khi dựng bằng `--fake`.
+- `python -m src.export_artifacts --fake --out artifacts [--n-demo N]`: dựng artifacts/ từ dữ liệu giả (`src.data.fake`, embedding `fake`, decay 0,7) để chạy thử app khi chưa tải bản thật; cùng định dạng ở trên.
 
 Tổng dung lượng phải dưới 200 MB (200.000.000 byte). Script cắt danh mục theo dung lượng ước lượng (bỏ bài ít lượt nhất, giữ bài của playlist demo), rồi kiểm tra dung lượng thật sau khi ghi và báo lỗi nếu vẫn vượt.
 

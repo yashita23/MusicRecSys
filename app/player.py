@@ -6,8 +6,9 @@ trong artifacts/ (SessionVectorTaste), rồi xếp lại theo α bằng rerank v
 """
 from __future__ import annotations
 
+import threading
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -38,6 +39,13 @@ class Session:
     def current(self) -> str:
         return self.tracks[-1]
 
+    def append(self, track_id: str) -> Session:
+        return replace(self, tracks=self.tracks + (track_id,))
+
+    def drop_last(self) -> Session:
+        """Bỏ bài vừa chọn; đang ở seed thì giữ nguyên."""
+        return self if not self.chosen else replace(self, tracks=self.tracks[:-1])
+
 
 class Player:
     """Playlist demo, bài đang phát, hàng đợi theo α, và các thao tác chọn / quay lại / bắt đầu lại."""
@@ -49,6 +57,7 @@ class Player:
         self._info = artifacts.tracks[TRACK_INFO].set_index("track_id", drop=False)
         self._seeds = artifacts.demo.set_index("session_id")["seed_track_ids"].map(tuple)
         self._candidates: OrderedDict[tuple[str, ...], tuple[list[str], np.ndarray]] = OrderedDict()
+        self._lock = threading.Lock()  # Player dùng chung giữa các tab (st.cache_resource)
 
     @classmethod
     def from_dir(cls, path: str | Path) -> Player:
@@ -72,6 +81,12 @@ class Player:
     def tracks_with_vectors(self) -> list[str]:
         return self._artifacts.track_index["track_id"].tolist()
 
+    def is_valid(self, session: Session) -> bool:
+        """Phiên khớp artifacts đang dùng: playlist còn, seed như cũ, mọi bài có trong danh mục (sau khi đổi artifacts)."""
+        if session.playlist_id not in self._seeds.index:
+            return False
+        return session.tracks[: session.n_seed] == self._seeds[session.playlist_id] and all(t in self._info.index for t in session.tracks)
+
     def start(self, playlist_id: int) -> Session:
         seed = self._seeds[playlist_id]
         return Session(playlist_id, tuple(seed), len(seed))
@@ -82,13 +97,16 @@ class Player:
     def _session_candidates(self, session: Session) -> tuple[list[str], np.ndarray]:
         """Top-100 ứng viên của phiên (không có bài nào đã trong phiên); nhớ theo phiên để kéo α chỉ phải xếp lại."""
         key = session.tracks
-        if key in self._candidates:
-            self._candidates.move_to_end(key)
-        else:
-            self._candidates[key] = self._taste.candidates(list(key), k=N_CANDIDATES)
+        with self._lock:
+            if key in self._candidates:
+                self._candidates.move_to_end(key)
+                return self._candidates[key]
+        found = self._taste.candidates(list(key), k=N_CANDIDATES)
+        with self._lock:
+            self._candidates[key] = found
             if len(self._candidates) > CACHE_SESSIONS:
                 self._candidates.popitem(last=False)
-        return self._candidates[key]
+        return found
 
     def queue(self, session: Session, alpha: float, k: int | None = TOP_K) -> pd.DataFrame:
         """Hàng đợi top-k (k=None: cả 100 ứng viên) xếp theo điểm cuối, kèm thông tin bài và một dòng giải thích."""
@@ -104,13 +122,11 @@ class Player:
         """Người dùng chọn track_id trong hàng đợi hiện tại (ở α đang dùng): nối vào phiên và thành bài đang phát."""
         if track_id not in set(self.queue(session, alpha)["track_id"]):
             raise ValueError(f"{track_id} không có trong hàng đợi hiện tại: chỉ chọn được bài trong hàng đợi")
-        return Session(session.playlist_id, session.tracks + (track_id,), session.n_seed)
+        return session.append(track_id)
 
     def back(self, session: Session) -> Session:
         """Bỏ bài vừa chọn; đang ở seed thì giữ nguyên."""
-        if not session.chosen:
-            return session
-        return Session(session.playlist_id, session.tracks[:-1], session.n_seed)
+        return session.drop_last()
 
     def restart(self, session: Session) -> Session:
         return self.start(session.playlist_id)
